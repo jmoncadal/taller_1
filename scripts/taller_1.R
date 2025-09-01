@@ -145,8 +145,7 @@ stargazer(model3, model4_ols, type='text')
 #Falta 4c
 
 # Ejercicio 5 -------------------------------------------------------------
-
-
+# hola
 
 
 
