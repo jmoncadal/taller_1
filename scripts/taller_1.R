@@ -13,7 +13,7 @@ source(paste0(wd_main, wd_code, "/aux_functions.R"))
 
 # Estableciendo rutas -----------------------------------------------------
 
-wd_main <- "C:/Users/Juan/OneDrive - Universidad de los andes/Escritorio/Universidad/Posgrado/1. Primer Semestre/Big Data y Machine Learning/Trabajos/taller_1"
+wd_main <- "/Users/marianacorrea/Desktop/PEG/Big data/Taller 1/Sin título/taller_1"
 wd_code <- "/scripts"
 wd_output <- "/stores"
 
@@ -80,7 +80,7 @@ text(x = 30000000,
      y = 18000,
      labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
 
-# Ejercicio 2 -------------------------------------------------------------
+# Ejercicio 3 -------------------------------------------------------------
 
 # Creando las variables del modelo (2)
 geih <- geih %>% 
@@ -105,21 +105,48 @@ ci_model2 <- function(data, index){
 
 boot(geih, ci_model2, R = 1000)
 
-# Ejercicio 3 -------------------------------------------------------------
+# Ejercicio 4 -------------------------------------------------------------
 
 # Estimando modelo
-
 geih <- rename(geih, 'bin_male'='sex')
 
 model3 <- lm(log_salary_m ~ bin_male, data = geih)
 stargazer(model3, type = 'text')
 
+# Modelo con controles FWL
+# Falta decidir que controles usar (soy Mariana)
+controles <- ~ age + age_sq
+y_tilde <- resid(lm(update(controles, log_salary_m ~ .), data = geih)) 
+d_tilde <- resid(lm(update(controles, bin_male ~ .), data = geih))
 
+model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
+summary(model4_fwl)
+coef_fwl <- coef(model4_fwl[1])
+se_fwl <- sqrt(vcov(model4_fwl)[1,1]) 
 
-# Ejercicio 4 -------------------------------------------------------------
-# prueba
+# Modelo con controles FWL y Bootstrap
+f_boot_fwl <- function(data, idx){
+  d <- data[idx, ]                                                #Remuestreo con reemplazo
+  resid_y <- resid(lm(update(controles, log_salary_m ~ .), data = d))
+  resid_d <- resid(lm(update(controles, bin_male     ~ .), data = d))
+  coef(lm(resid_y ~ 0 + resid_d))[1]
+}
+
+set.seed(1213)
+coef_boot  <- boot(geih, f_boot_fwl, R = 1000)
+se_boot <- sd(coef_boot$t)
+
+# Comparación
+model4_ols <- lm(log_salary_m ~ bin_male + age + age_sq, data = geih)
+to_pct <- function(b) (exp(b) - 1) * 100 #No se si debamos hacerle transformación logarítmica
+
+stargazer(model3, model4_ols, type='text')
+
+#Falta 4c
 
 # Ejercicio 5 -------------------------------------------------------------
+
+
 
 
 
