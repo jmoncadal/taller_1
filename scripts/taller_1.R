@@ -13,7 +13,7 @@ p_load(tidyverse, rvest, writexl, readxl,
 
 # Estableciendo rutas -----------------------------------------------------
 
-wd_main <- "C:/Users/Rodri/OneDrive/Rodri estudioso/GitHub/taller_1"
+wd_main <- "taller_1"
 wd_code <- "/scripts"
 wd_output <- "/stores"
 
