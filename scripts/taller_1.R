@@ -13,10 +13,10 @@ p_load(tidyverse, rvest, writexl, readxl,
 
 # Estableciendo rutas -----------------------------------------------------
 
-wd_main <- "/Users/marianacorrea/Desktop/PEG/Big data/Taller 1/Sin título/taller_1"
-wd_code <- "/scripts"
-wd_output <- "/stores"
-wd_views <- "/views"
+wd_main <- "taller_1"
+wd_code <- "scripts"
+wd_output <- "stores"
+wd_views <- "views"
 
 # Definiciones necesarias -------------------------------------------------
 
@@ -47,9 +47,9 @@ for (i in seq(1, length(pages))){
 
 geih[1] <- NULL
 
-write_xlsx(geih, paste0(wd_main, wd_output, "/base_geih.xlsx"))
+write_xlsx(geih, paste0(wd_output, "/base_geih.xlsx"))
 
-geih <- read_xlsx( paste0(wd_main, wd_output, "/base_geih.xlsx"))
+geih <- read_xlsx( paste0(wd_output, "/base_geih.xlsx"))
 
 # Explorando los datos
 
