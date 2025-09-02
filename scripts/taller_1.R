@@ -13,9 +13,10 @@ p_load(tidyverse, rvest, writexl, readxl,
 
 # Estableciendo rutas -----------------------------------------------------
 
-wd_main <- "taller_1"
+wd_main <- "/Users/marianacorrea/Desktop/PEG/Big data/Taller 1/Sin título/taller_1"
 wd_code <- "/scripts"
 wd_output <- "/stores"
+wd_views <- "/views"
 
 # Definiciones necesarias -------------------------------------------------
 
@@ -128,7 +129,9 @@ boot.ci(results, type = "perc", index = 2)  # For age_sq
 geih <- rename(geih, 'bin_male'='sex')
 
 model3 <- lm(log_salary_m ~ bin_male, data = geih)
-stargazer(model3, type = 'text')
+out_tex <- file.path(wd_main, wd_views, "model3.tex")
+stargazer(model3, type = 'latex', out=out_tex)
+
 
 # Modelo con controles FWL
 controles <- ~ age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel
