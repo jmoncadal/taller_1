@@ -114,9 +114,8 @@ model3 <- lm(log_salary_m ~ bin_male, data = geih)
 stargazer(model3, type = 'text')
 
 # Modelo con controles FWL
-# Falta decidir que controles usar (soy Mariana)
-controles <- ~ age + age_sq
-y_tilde <- resid(lm(update(controles, log_salary_m ~ .), data = geih)) 
+controles <- ~ age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel
+y_tilde <- resid(lm(update(controles, log_salary_m ~ .), data = geih))
 d_tilde <- resid(lm(update(controles, bin_male ~ .), data = geih))
 
 model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
@@ -137,15 +136,17 @@ coef_boot  <- boot(geih, f_boot_fwl, R = 1000)
 se_boot <- sd(coef_boot$t)
 
 # Comparación
-model4_ols <- lm(log_salary_m ~ bin_male + age + age_sq, data = geih)
-to_pct <- function(b) (exp(b) - 1) * 100 #No se si debamos hacerle transformación logarítmica
-
+model4_ols <- lm(log_salary_m ~ bin_male + age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
 stargazer(model3, model4_ols, type='text')
 
-#Falta 4c
+# Modelo interactuando edad y género 
+model5 <- lm(log_salary_m ~ age + bin_male + bin_male:age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
+summary(model5)
+
+# "peak-ages" e intervalos de confianza
 
 # Ejercicio 5 -------------------------------------------------------------
-# hola
+
 
 
 
