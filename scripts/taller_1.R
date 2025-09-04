@@ -49,7 +49,7 @@ geih[1] <- NULL
 
 write_xlsx(geih, paste0(wd_output, "/base_geih.xlsx"))
 
-geih <- read_xlsx( paste0(wd_output, "/base_geih.xlsx"))
+geih <- read_xlsx(paste0(wd_output, "/base_geih.xlsx"))
 # Explorando los datos v1 -------------------------------------------------------------
 
 #hist(geih$y_salary_m, breaks = 150,
@@ -84,7 +84,7 @@ geih <- read_xlsx( paste0(wd_output, "/base_geih.xlsx"))
 #     y = 18000,
 #     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
 
-Explorando los datos v1
+#Explorando los datos v1
 # Explorando los datos v2 ------------------------------------------------------
 df <- geih
 table(df$dominio)
@@ -158,6 +158,7 @@ df <- df %>%
   mutate(y_total_m_ha = ifelse(ingtot == 0, 0, y_total_m_ha))
 # Check for people who spend hours working but had no income
 sum(is.na(df$y_total_m_ha))
+
 #There is 1524 individuals that worked that week but have no hourly income
 
 table(is.na(df$y_total_m_ha), is.na(df$hoursWorkUsual))
@@ -185,7 +186,7 @@ df <- df %>%
 
 # We drop useless variables:
 
-df <- select(df, -dominio, -depto, -fex_dpto)
+df <- select(df, -dominio, -depto, -fex_dpto, -clase)
 
 #Check the nature of relevant, non binary variables:
 sapply(df[c("estrato1", "oficio","maxEducLevel", "relab", "p6240", "p7040", "p7050")], class)
@@ -265,51 +266,205 @@ df <- df %>% mutate(
 df <- df %>% mutate(
   age_sq = age^2)
 
-model3 <- lm(ln_ingtot_h ~ bin_male, data = geih)
+model3 <- lm(ln_ingtot_h ~ bin_male, data = df)
 out_tex <- file.path(wd_views, "model3.tex")
 stargazer(model3, type = 'text')
 stargazer(model3, type = 'latex', out=out_tex)
 
-# Modelo con controles FWL
-controles <- ~ age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel
-y_tilde <- resid(lm(update(controles, log_salary_m ~ .), data = geih))
-d_tilde <- resid(lm(update(controles, bin_male ~ .), data = geih))
+
+
+# Define all variables used in both models
+vars_needed <- c("ln_ingtot_h", "bin_male", "age", "age_sq", "estrato1", 
+                 "oficio", "hoursWorkUsual", "maxEducLevel")
+
+# Filter out rows with any missing values in those variables
+df_clean <- df %>% filter(if_all(all_of(vars_needed), ~ !is.na(.)))
+
+# Now run the FWL steps
+controles <- ~ age + age_sq + estrato1 + oficio + hoursWorkUsual + maxEducLevel
+
+y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_clean))
+d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_clean))
 
 model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
-summary(model4_fwl)
-coef_fwl <- coef(model4_fwl[1])
-se_fwl <- sqrt(vcov(model4_fwl)[1,1])
+stargazer(model4_fwl, type = 'text')
 
-# Propuesta v2 FWL ------------------
-
-library(fixest)
-
-feols(ln_ingtot ~ bin_male | age + age_sq + clase + estrato1 + oficio + hoursWorkUsual + maxEducLevel, data = df)
-
-# Controles y Bootstrap ------------------
-
-
-# Modelo con controles FWL y Bootstrap
-f_boot_fwl <- function(data, idx){
-  d <- data[idx, ]                                                #Remuestreo con reemplazo
-  resid_y <- resid(lm(update(controles, log_salary_m ~ .), data = d))
-  resid_d <- resid(lm(update(controles, bin_male     ~ .), data = d))
-  coef(lm(resid_y ~ 0 + resid_d))[1]
+fwl_boot <- function(data, indices) {
+  df_sample <- data[indices, ]
+  
+  controles <- ~ age + age_sq + estrato1 + oficio + hoursWorkUsual + maxEducLevel
+  
+  y_tilde <- resid(lm(update(controles, ln_ingtot ~ .), data = df_sample))
+  d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_sample))
+  
+  coef(lm(y_tilde ~ 0 + d_tilde))[1]
 }
 
-set.seed(1213)
-coef_boot  <- boot(geih, f_boot_fwl, R = 1000)
-se_boot <- sd(coef_boot$t)
+library(boot)
 
-# Comparación
-model4_ols <- lm(log_salary_m ~ bin_male + age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
-stargazer(model3, model4_ols, type='text')
+set.seed(123) 
+boot_results <- boot(data = df_clean, statistic = fwl_boot, R = 1000)
 
+# View results
+boot_results
+
+se_fwl <- summary(model4_fwl)$coefficients[1, "Std. Error"]
+
+se_boot <- sd(boot_results$t)
+
+comparison <- data.frame(
+  Method = c("FWL OLS", "Bootstrap"),
+  Std_Error = c(se_fwl, se_boot)
+)
+
+print(comparison)
+
+# Intento 4c ----------------------------
+vars_needed <- c("ln_ingtot_h","bin_male","age","age_sq","estrato1","oficio","hoursWorkUsual","maxEducLevel")
+
+df_clean <- df |> dplyr::filter(dplyr::if_all(dplyr::all_of(vars_needed), ~ !is.na(.)))
+
+# X2: controls (EXCLUDING the vars of interest)
+Z <- model.matrix(~ estrato1 + oficio + hoursWorkUsual + maxEducLevel - 1, data = df_clean)
+
+# X1: regressors of interest (no intercept)
+X <- model.matrix(~ bin_male + age + age_sq - 1, data = df_clean)
+
+y <- df_clean$ln_ingtot_h
+
+# Residualize y and each X1 column on Z
+y_tilde <- lm(y ~ Z - 1)$residuals
+X_tilde <- as.data.frame(X)
+for (j in names(X_tilde)) {
+  X_tilde[[j]] <- lm(X_tilde[[j]] ~ Z - 1)$residuals
+}
+
+# FWL regression: gives β for bin_male, age, age_sq (identical to full OLS)
+m_fwl  <- lm(y_tilde ~ . - 1, data = X_tilde)
+beta   <- coef(m_fwl)              # names: "bin_male", "age", "age_sq"
+
+# Get intercept from the full model (FWL doesn't give it)
+m_full <- lm(ln_ingtot_h ~ bin_male + age + age_sq +
+               estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+             data = df_clean)
+alpha  <- coef(m_full)[["(Intercept)"]]
+
+ages <- 15:85
+
+pred_female <- alpha + beta[["age"]]*ages + beta[["age_sq"]] * (ages^2)
+pred_male   <- pred_female + beta[["bin_male"]]
+
+peak_age <- - beta[["age"]] / (2*beta[["age_sq"]])  # CAMBIARLO
+
+boot_fun <- function(data, idx){
+  d <- data[idx,]
+  
+  Z <- model.matrix(~ estrato1 + oficio + hoursWorkUsual + maxEducLevel - 1, d)
+  X <- model.matrix(~ bin_male + age + age_sq - 1, d)
+  y <- d$ln_ingtot_h
+  
+  y_t  <- lm(y ~ Z - 1)$residuals
+  X_t  <- as.data.frame(X)
+  for (j in names(X_t)) X_t[[j]] <- lm(X_t[[j]] ~ Z - 1)$residuals
+  
+  b <- coef(lm(y_t ~ . - 1, data = X_t))  # bin_male, age, age_sq
+  
+  a <- coef(lm(ln_ingtot_h ~ bin_male + age + age_sq +
+                 estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+               data = d))[["(Intercept)"]]
+  
+  ages <- 15:85
+  pred_f <- a + b[["age"]]*ages + b[["age_sq"]]*(ages^2)
+  pred_m <- pred_f + b[["bin_male"]]
+  peak   <- - b[["age"]] / (2*b[["age_sq"]])
+  
+  c(pred_f, pred_m, peak)
+}
+
+set.seed(123)
+boot_res <- boot(df_clean, boot_fun, R = 500)
+
+ages   <- 15:85
+nAges  <- length(ages)
+boot_m <- boot_res$t
+
+boot_female <- boot_m[, 1:nAges]
+boot_male   <- boot_m[, (nAges+1):(2*nAges)]
+boot_peak   <- boot_m[, (2*nAges+1)]
+
+ci_female <- apply(boot_female, 2, quantile, c(.025,.975))
+ci_male   <- apply(boot_male,   2, quantile, c(.025,.975))
+ci_peak   <- quantile(boot_peak, c(.025,.975))
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+
+# --- 1) Build a tidy dataframe for plotting (log scale) ---
+df_plot_log <- tibble(
+  age = rep(ages, 2),
+  sex = factor(rep(c("Female","Male"), each = length(ages)), levels = c("Female","Male")),
+  lny = c(pred_female, pred_male),
+  lny_lo = c(ci_female[1,], ci_male[1,]),
+  lny_hi = c(ci_female[2,], ci_male[2,])
+)
+
+# --- 2) Optional: also create levels (exponentiated) version ---
+df_plot_lvl <- df_plot_log %>%
+  mutate(
+    y    = exp(lny),
+    y_lo = exp(lny_lo),
+    y_hi = exp(lny_hi)
+  )
+
+# Choose which to plot:
+use_levels <- FALSE  # set TRUE if you prefer wage levels instead of log-wage
+
+if (!use_levels) {
+  p <- ggplot(df_plot_log, aes(x = age, y = lny, color = sex, fill = sex)) +
+    # Peak age CI band (same for both sexes with current spec)
+    annotate("rect", xmin = ci_peak[1], xmax = ci_peak[2],
+             ymin = -Inf, ymax = Inf, alpha = 0.08) +
+    # CI ribbons by sex
+    geom_ribbon(aes(ymin = lny_lo, ymax = lny_hi), alpha = 0.20, color = NA) +
+    # Predicted curves
+    geom_line(size = 1.1) +
+    # Peak age vertical line
+    geom_vline(xintercept = peak_age, linetype = "dashed") +
+    labs(
+      title = "Predicted Age–Wage Profile (log scale) with 95% CIs",
+      subtitle = sprintf("Peak age ≈ %.1f (95%% CI: %.1f–%.1f) — identical across sexes without interactions",
+                         peak_age, ci_peak[1], ci_peak[2]),
+      x = "Age",
+      y = "ln(income)",
+      color = "Sex", fill = "Sex",
+      caption = "Notes: CIs via bootstrap of the FWL estimates; peak age CI from the bootstrap distribution."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "top")
+} else {
+  p <- ggplot(df_plot_lvl, aes(x = age, y = y, color = sex, fill = sex)) +
+    annotate("rect", xmin = ci_peak[1], xmax = ci_peak[2],
+             ymin = -Inf, ymax = Inf, alpha = 0.08) +
+    geom_ribbon(aes(ymin = y_lo, ymax = y_hi), alpha = 0.20, color = NA) +
+    geom_line(size = 1.1) +
+    geom_vline(xintercept = peak_age, linetype = "dashed") +
+    scale_y_continuous(labels = label_number_si()) +
+    labs(
+      title = "Predicted Age–Wage Profile (levels) with 95% CIs",
+      subtitle = sprintf("Peak age ≈ %.1f (95%% CI: %.1f–%.1f) — identical across sexes without interactions",
+                         peak_age, ci_peak[1], ci_peak[2]),
+      x = "Age",
+      y = "Income (level)",
+      color = "Sex", fill = "Sex",
+      caption = "Notes: CIs via bootstrap of the FWL estimates; peak age CI from the bootstrap distribution."
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "top")
+}
+print(p)
 # peak ages plot 
-geih <- geih %>% mutate(age_sq = age^2)
-
-model5 <- lm(log_salary_m ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
-summary(model5)
 
 # Predicciones con intervalos de confianza
 coefs_model5 <- coef(model5)
@@ -320,9 +475,6 @@ b5 <- coefs_model5["age_sq:bin_male"]
 
 peak_f <- -b1 / (2*b2)                    # Para mujeres
 peak_m <- -(b1 + b4) / (2*(b2 + b5))      # Para hombres
-
-
-
 
 
 pred <- predict(model5, newdata = geih, interval = "confidence")
@@ -343,62 +495,6 @@ ggplot(geih, aes(x = age, y = fit, color = sex, fill = sex)) +
   ) +
   theme_minimal()
 
-
-
-# 0) Make quadratic and (re)fit model
-geih <- geih %>% mutate(age_sq = age^2)
-model <- lm(
-  log_salary_m ~ age * bin_male + age_sq * bin_male +
-    clase + estrato1 + oficio + hoursWorkUsual + p7090 + maxEducLevel,
-  data = geih
-)
-
-# 1) What variables does the model need?
-need <- setdiff(all.vars(terms(model)), c("log_salary_m"))
-need
-# [should print: "age" "bin_male" "age_sq" "clase" "estrato1" "oficio" "hoursWorkUsual" "p7090" "maxEducLevel"]
-
-# 2) Typical values for other regressors
-mode_of <- function(x) { ux <- unique(x); ux[which.max(tabulate(match(x, ux)))] }
-
-typicals <- geih %>%
-  summarise(
-    across(where(is.numeric), ~mean(.x, na.rm = TRUE)),
-    across(where(is.factor),  ~mode_of(.x))
-  )
-
-# keep only the columns that appear in the model (except age/bin_male/age_sq)
-other_vars <- setdiff(need, c("age","bin_male","age_sq"))
-typicals <- typicals %>% select(any_of(other_vars))
-
-# 3) Build prediction grid and ensure correct types
-ages <- 18:65
-grid <- tidyr::crossing(age = ages, bin_male = c(0,1)) %>%
-  mutate(age_sq = age^2)
-
-newdat <- bind_cols(grid, typicals[rep(1, nrow(grid)), , drop = FALSE])
-
-# Make factor columns in newdat match geih's factor levels
-factor_vars <- names(Filter(is.factor, geih))
-newdat <- newdat %>%
-  mutate(across(all_of(intersect(factor_vars, names(newdat))),
-                ~ factor(.x, levels = levels(geih[[cur_column()]]))))
-
-# 4) Sanity check: does newdat have what the model needs?
-setdiff(need, names(newdat))   # should be character(0)
-str(newdat[, need])
-
-# 5) Predict with CIs and plot
-pred <- predict(model, newdata = newdat, interval = "confidence")
-plotdat <- cbind(newdat, pred) %>%
-  mutate(sex = ifelse(bin_male == 1, "Male", "Female"))
-
-ggplot(plotdat, aes(x = age, y = fit, color = sex, fill = sex)) +
-  geom_line(size = 1) +
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.18, color = NA) +
-  labs(title = "Predicted log-salary by Age and Sex (95% CI)",
-       x = "Age", y = "Predicted log(salary)") +
-  theme_minimal()
 
 
 # Ejercicio 5 -------------------------------------------------------------
