@@ -346,7 +346,7 @@ df_clean <- df %>%
 
 # =========================
 # 2) Modelo
-# (2.1) Por si acaso, garantizamos que exista age_sq (edad al cuadrado).
+# (2.1) Por si acaso, garantizamos que exista age_sq.
 #       Esto hace que el perfil edad–salario pueda ser cóncavo (sube y luego baja).
 if (!"age_sq" %in% names(df_clean)) {
   df_clean <- df_clean %>% mutate(age_sq = age^2)
@@ -385,8 +385,8 @@ boot_curve_fun <- function(data, indices) {
 }
 
 # (4.2) Ejecutar bootstrap
-set.seed(123)
-boot_R <- 500  # usa 1000 o 2000 si quieres más precisión
+set.seed(111)
+boot_R <- 1000
 boot_res <- boot::boot(data = df_clean, statistic = boot_curve_fun, R = boot_R)
 
 # (4.3) Calcular intervalos percentiles por cada fila de df_pred
@@ -399,8 +399,8 @@ ci_mat <- t(apply(boot_mat, 2, quantile, probs = c(0.05, 0.95), na.rm = TRUE))
 df_pred <- df_pred %>%
   mutate(
     fit_boot = boot_res$t0,    # predicción original
-    lwr_boot = ci_mat[,1],     # límite inferior 2.5%
-    upr_boot = ci_mat[,2]      # límite superior 97.5%
+    lwr_boot = ci_mat[,1],     # límite inferior 5%
+    upr_boot = ci_mat[,2]      # límite superior 95%
   )
 
 # =========================
@@ -428,14 +428,23 @@ peak_male   <- -(b_age + b_int1) / (2 * (b_age2 + b_int2))
 ggplot(df_pred, aes(x = age, y = fit_boot, color = sex, fill = sex)) +
   geom_line(linewidth = 1) +
   geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot), alpha = 0.2, color = NA) +
+  # líneas verticales
   geom_vline(xintercept = peak_female, linetype = "dashed", color = "red") +
   geom_vline(xintercept = peak_male,   linetype = "dashed", color = "blue") +
+  # etiquetas con solo el número
+  annotate("text", x = peak_female, y = max(df_pred$fit_boot, na.rm = TRUE),
+           label = round(peak_female, 1), color = "red", size = 4, fontface = "bold", vjust = -0.5) +
+  annotate("text", x = peak_male, y = max(df_pred$fit_boot, na.rm = TRUE),
+           label = round(peak_male, 1), color = "blue", size = 4, fontface = "bold", vjust = -0.5) +
   labs(
     title = "Predicted log-salary by Age and Gender (Bootstrap 95% CI)",
     x = "Age",
     y = "Predicted log(salary)"
   ) +
   theme_minimal()
+
+
+
 
 # Ejercicio 5 -------------------------------------------------------------
 
