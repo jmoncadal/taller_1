@@ -50,40 +50,171 @@ geih[1] <- NULL
 write_xlsx(geih, paste0(wd_output, "/base_geih.xlsx"))
 
 geih <- read_xlsx( paste0(wd_output, "/base_geih.xlsx"))
+# Explorando los datos v1 -------------------------------------------------------------
 
-# Explorando los datos
-
-hist(geih$y_salary_m, breaks = 150,
-     main = "Histogram of salary",
-     xlab = "Salary")
-abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
-abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
-text(x = 30000000,
-     y = 3000,
-     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
-text(x = 30000000,
-     y = 2800,
-     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
+#hist(geih$y_salary_m, breaks = 150,
+#     main = "Histogram of salary",
+#     xlab = "Salary")
+#abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
+#abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
+#text(x = 30000000,
+#     y = 3000,
+#     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
+#text(x = 30000000,
+#     y = 2800,
+#     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
 
 # Imputación 
 
 # Crreo que podemos hacer ejercicios más complejos de imputación más complejo y 
 # con una limpieza de datos más profunda
-geih <- geih %>% 
-  mutate(y_salary_m = ifelse(is.na(y_salary_m), median(y_salary_m, na.rm = TRUE), y_salary_m))
+#geih <- geih %>% 
+#  mutate(y_salary_m = ifelse(is.na(y_salary_m), median(y_salary_m, na.rm = TRUE), y_salary_m))
 
 # Histograma después de la imputación.
-hist(geih$y_salary_m, breaks = 150,
-     main = "Histogram of salary",
-     xlab = "Salary")
-abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
-abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
-text(x = 30000000,
-     y = 20000,
-     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
-text(x = 30000000,
-     y = 18000,
-     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
+#hist(geih$y_salary_m, breaks = 150,
+#     main = "Histogram of salary",
+#     xlab = "Salary")
+#abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
+#abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
+#text(x = 300000000
+#     y = 20000,
+#     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
+#text(x = 30000000,
+#     y = 18000,
+#     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
+
+Explorando los datos v1
+# Explorando los datos v2 ------------------------------------------------------
+df <- geih
+table(df$dominio)
+
+# Definimos nuestra población de interés
+# Edad objetivo Mayores de 16 (de acuerdo con el código de infancia y adolescencia)
+
+df <- df %>% filter(age>=15)
+
+# We examine the variable age in depth
+
+quantile(df$age, probs = 0.99, na.rm = TRUE)
+
+df <- filter(df, age<=85)
+#Variables of interes:
+#y_ingLab_m_ha ; labor income salaried - nomial hourly - all occ.
+#y_total_m_ha ; income salaried + independents total - nominal hourly
+
+#We check which of the variables has less missing values;
+
+colSums(is.na(df[c("y_ingLab_m_ha", "y_total_m_ha")]))
+#y_total_m_ha
+
+#Data imputation: two approaches: 1
+#Basic conditions for a value that is imputated ingtot != 0
+#If it has any other value in the hourly nominal variables the maximum vakue 
+#that is the value it needs imputated
+# If it has a value on the monthly nominal variables, the maximun needs to be divided by the hours worked
+
+impute_y_total_m_ha_level1 <- function(df) {
+  hourly_vars  <- c("y_gananciaIndep_m_hu")  
+  monthly_vars <- c("y_gananciaIndep_m", "y_ingLab_m", "y_salary_m", "y_total_m")
+  
+  df %>% 
+    rowwise() %>%
+    mutate(
+      # Rowwise max among hourly vars
+      max_hourly = {
+        vals <- c_across(all_of(hourly_vars))
+        if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
+      },
+      # Rowwise max among monthly vars
+      max_monthly = {
+        vals <- c_across(all_of(monthly_vars))
+        if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
+      },
+      # Convert monthly max to hourly
+      candidate_from_monthly = if (!is.na(max_monthly) && !is.na(hoursWorkUsual) && hoursWorkUsual > 0) {
+        max_monthly / (hoursWorkUsual * 4)
+      } else {
+        NA_real_
+      },
+      candidate = coalesce(max_hourly, candidate_from_monthly),
+      
+      # Overwrite y_total_m_ha only when imputation applies
+      y_total_m_ha = case_when(
+        ingtot != 0 & (is.na(y_total_m_ha) | y_total_m_ha <= 0) & !is.na(max_hourly) ~ max_hourly,
+        ingtot != 0 & (is.na(y_total_m_ha) | y_total_m_ha <= 0) & is.na(max_hourly) & !is.na(candidate_from_monthly) ~ candidate_from_monthly,
+        TRUE ~ y_total_m_ha
+      )
+    ) %>%
+    ungroup() %>%
+    select(-max_hourly, -max_monthly, -candidate_from_monthly, -candidate) # drop helpers
+}
+
+df <- impute_y_total_m_ha_level1(df)
+
+#Replace with 0 if ingtot==0, to account for people who had no income at all
+
+df <- df %>%
+  mutate(y_total_m_ha = ifelse(ingtot == 0, 0, y_total_m_ha))
+# Check for people who spend hours working but had no income
+sum(is.na(df$y_total_m_ha))
+#There is 1524 individuals that worked that week but have no hourly income
+
+table(is.na(df$y_total_m_ha), is.na(df$hoursWorkUsual))
+
+# If someone worked anytimes of hours, but has no hourly wage, then the mean 
+#of the people that have the same sex and oficio are imputated as hourly wage
+
+df <- df %>%
+  group_by(sex, oficio) %>%
+  mutate(
+    # Compute group mean (exclude NA automatically)
+    group_mean = if (all(is.na(y_total_m_ha))) NA_real_ else mean(y_total_m_ha, na.rm = TRUE),
+    
+    # Replace directly into y_total_m_ha
+    y_total_m_ha = if_else(
+      !is.na(hoursWorkUsual) & is.na(y_total_m_ha) & !is.na(group_mean),
+      group_mean,
+      y_total_m_ha
+    )
+  ) %>%
+  ungroup() %>%
+  select(-group_mean)
+
+# ---- Usage ----
+
+# We drop useless variables:
+
+df <- select(df, -dominio, -depto, -fex_dpto)
+
+#Check the nature of relevant, non binary variables:
+sapply(df[c("estrato1", "oficio","maxEducLevel", "relab", "p6240", "p7040", "p7050")], class)
+
+# Change the values to factors
+
+df$estrato1      <- as.factor(df$estrato1)
+df$oficio        <- as.factor(df$oficio)
+df$maxEducLevel  <- as.factor(df$maxEducLevel)
+df$relab         <- as.factor(df$relab)
+df$p6240         <- as.factor(df$p6240)
+df$p7040         <- as.factor(df$p7040)
+df$p7050         <- as.factor(df$p7050)
+
+#rename some variables:
+
+df <- df %>% rename(
+  type_occup = relab,
+  activity_time = p6240,
+  second_job = p7040,
+  activity_second_job = p7050
+)
+
+
+# We check the amount of na's based on 
+colSums(is.na(df[c("estrato1", "oficio","maxEducLevel", "type_occup", "activity_time", "second_job", "activity_second_job")]))
+
+# second_job has a lot of NA's the same number as in oficio
+table(df$second_job) # Valores muy bajos de sí, con muchos missings. No es una buena idea. bad controls?
 
 # Ejercicio 3 -------------------------------------------------------------
 
@@ -126,13 +257,18 @@ boot.ci(results, type = "perc", index = 2)  # For age_sq
 # Ejercicio 4 -------------------------------------------------------------
 
 # Estimando modelo
-geih <- rename(geih, 'bin_male'='sex')
+df <- rename(df, 'bin_male'='sex')
+df <- df %>% mutate(
+  ln_ingtot_h = log(y_total_m_ha+1e-10)
+)
 
-model3 <- lm(log_salary_m ~ bin_male, data = geih)
+df <- df %>% mutate(
+  age_sq = age^2)
+
+model3 <- lm(ln_ingtot_h ~ bin_male, data = geih)
 out_tex <- file.path(wd_views, "model3.tex")
 stargazer(model3, type = 'text')
 stargazer(model3, type = 'latex', out=out_tex)
-
 
 # Modelo con controles FWL
 controles <- ~ age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel
@@ -143,6 +279,15 @@ model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
 summary(model4_fwl)
 coef_fwl <- coef(model4_fwl[1])
 se_fwl <- sqrt(vcov(model4_fwl)[1,1])
+
+# Propuesta v2 FWL ------------------
+
+library(fixest)
+
+feols(ln_ingtot ~ bin_male | age + age_sq + clase + estrato1 + oficio + hoursWorkUsual + maxEducLevel, data = df)
+
+# Controles y Bootstrap ------------------
+
 
 # Modelo con controles FWL y Bootstrap
 f_boot_fwl <- function(data, idx){
