@@ -129,7 +129,8 @@ boot.ci(results, type = "perc", index = 2)  # For age_sq
 geih <- rename(geih, 'bin_male'='sex')
 
 model3 <- lm(log_salary_m ~ bin_male, data = geih)
-out_tex <- file.path(wd_main, wd_views, "model3.tex")
+out_tex <- file.path(wd_views, "model3.tex")
+stargazer(model3, type = 'text')
 stargazer(model3, type = 'latex', out=out_tex)
 
 
@@ -159,23 +160,27 @@ se_boot <- sd(coef_boot$t)
 model4_ols <- lm(log_salary_m ~ bin_male + age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
 stargazer(model3, model4_ols, type='text')
 
-# Modelo interactuando edad y género # metemos edad al cuadrado?
-model5 <- lm(log_salary_m ~ age + bin_male + bin_male:age + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
-summary(model5)
-
-# "peak-ages" e intervalos de confianza
-
-
+# peak ages plot 
 geih <- geih %>% mutate(age_sq = age^2)
 
-model <- lm(
-  log_salary_m ~ age * bin_male + age_sq * bin_male +
-    clase + estrato1 + oficio + hoursWorkUsual + p7090 + maxEducLevel,
-  data = geih
-)
+model5 <- lm(log_salary_m ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + clase + estrato1 + oficio + hoursWorkUsual + p7090 +maxEducLevel, data = geih)
+summary(model5)
 
 # Predicciones con intervalos de confianza
-pred <- predict(model, newdata = geih, interval = "confidence")
+coefs_model5 <- coef(model5)
+b1 <- coefs_model5["age"]         
+b2 <- coefs_model5["age_sq"]       
+b4 <- coefs_model5["age:bin_male"] 
+b5 <- coefs_model5["age_sq:bin_male"] 
+
+peak_f <- -b1 / (2*b2)                    # Para mujeres
+peak_m <- -(b1 + b4) / (2*(b2 + b5))      # Para hombres
+
+
+
+
+
+pred <- predict(model5, newdata = geih, interval = "confidence")
 geih <- geih %>%
   mutate(
     fit = pred[, "fit"],
