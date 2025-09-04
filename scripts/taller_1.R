@@ -293,7 +293,7 @@ fwl_boot <- function(data, indices) {
   
   controles <- ~ age + age_sq + estrato1 + oficio + hoursWorkUsual + maxEducLevel
   
-  y_tilde <- resid(lm(update(controles, ln_ingtot ~ .), data = df_sample))
+  y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_sample))
   d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_sample))
   
   coef(lm(y_tilde ~ 0 + d_tilde))[1]
@@ -345,182 +345,97 @@ df_clean <- df %>%
   )
 
 # =========================
-# 2) FWL setup
-#    X1 (vars of interest) = bin_male, age, age_sq, bin_male:age, bin_male:age_sq
-#    X2 (controls)         = estrato1 + oficio + hoursWorkUsual + maxEducLevel
-#    Note: intercept is NOT identified by FWL; we get it from full OLS.
-# =========================
-# Design matrices (explicit columns, no intercept)
-Z <- model.matrix(~ estrato1 + oficio + hoursWorkUsual + maxEducLevel - 1, data = df_clean)
-X <- model.matrix(~ bin_male * (age + age_sq) - 1, data = df_clean)  # gives columns:
-# "bin_male" "age" "age_sq" "bin_male:age" "bin_male:age_sq"
-y <- df_clean$ln_ingtot_h
-
-# Residualize y and each column of X on Z (FWL steps 1 & 2)
-y_tilde <- lm(y ~ Z - 1)$residuals
-X_tilde <- as.data.frame(X)
-for (nm in names(X_tilde)) {
-  X_tilde[[nm]] <- lm(X_tilde[[nm]] ~ Z - 1)$residuals
+# 2) Modelo
+# (2.1) Por si acaso, garantizamos que exista age_sq (edad al cuadrado).
+#       Esto hace que el perfil edad–salario pueda ser cóncavo (sube y luego baja).
+if (!"age_sq" %in% names(df_clean)) {
+  df_clean <- df_clean %>% mutate(age_sq = age^2)
 }
 
-# FWL regression (step 3): coefficients equal the full-OLS β for these columns
-m_fwl <- lm(y_tilde ~ . - 1, data = X_tilde)
-beta  <- coef(m_fwl)
-# names(beta): "bin_male","age","age_sq","bin_male:age","bin_male:age_sq"
-
-# Intercept from full model (needed to predict levels of ln(income))
-m_full <- lm(ln_ingtot_h ~ bin_male * (age + age_sq) + estrato1 + oficio + hoursWorkUsual + maxEducLevel,
-             data = df_clean)
-alpha  <- coef(m_full)[["(Intercept)"]]
-
-# =========================
-# 3) Deterministic predictions (ages 6..65) in ln(income)
-#    Female curve:   α + β_age*a + β_age2*a^2
-#    Male curve:     α + β_male + (β_age+β_ma)*a + (β_age2+β_ma2)*a^2
-#    Peaks:
-#      female_peak = -β_age / (2*β_age2)
-#      male_peak   = -(β_age+β_ma) / (2*(β_age2+β_ma2))
-# =========================
-ages  <- 15:85
-b0    <- alpha
-b_m   <- beta[["bin_male"]]
-b_a   <- beta[["age"]]
-b_a2  <- beta[["age_sq"]]
-b_ma  <- beta[["bin_male:age"]]
-b_ma2 <- beta[["bin_male:age_sq"]]
-
-# Predicted ln(income)
-pred_female <- b0 + b_a*ages + b_a2*(ages^2)
-pred_male   <- b0 + b_m + (b_a + b_ma)*ages + (b_a2 + b_ma2)*(ages^2)
-
-# Peak ages (sex-specific thanks to interactions)
-peak_female <- - b_a / (2*b_a2)
-peak_male   <- - (b_a + b_ma) / (2*(b_a2 + b_ma2))
-
-# =========================
-# 4) Bootstrap CIs that respect "sum of betas"
-#    - Resample rows
-#    - Recompute FWL β's + intercept
-#    - Form ln-predictions by sex for 6..65
-#    - Compute sex-specific peaks
-# =========================
-boot_fun <- function(data, idx){
-  d <- data[idx, ]
-  
-  # Safeguard types on each resample
-  Z <- model.matrix(~ estrato1 + oficio + hoursWorkUsual + maxEducLevel - 1, data = d)
-  X <- model.matrix(~ bin_male * (age + age_sq) - 1, data = d)
-  y <- d$ln_ingtot_h
-  
-  y_t <- lm(y ~ Z - 1)$residuals
-  X_t <- as.data.frame(X)
-  for (nm in names(X_t)) X_t[[nm]] <- lm(X_t[[nm]] ~ Z - 1)$residuals
-  
-  b <- coef(lm(y_t ~ . - 1, data = X_t))
-  # ensure we have all names (rare collinearity fallback)
-  need <- c("bin_male","age","age_sq","bin_male:age","bin_male:age_sq")
-  b <- setNames(b[need], need)
-  
-  # Intercept from full model on the resample
-  a <- coef(lm(ln_ingtot_h ~ bin_male * (age + age_sq) +
-                 estrato1 + oficio + hoursWorkUsual + maxEducLevel, data = d))[["(Intercept)"]]
-  
-  # Predictions (ln)
-  ages <- 6:65
-  pf <- a + b[["age"]]*ages + b[["age_sq"]]*(ages^2)
-  pm <- a + b[["bin_male"]] + (b[["age"]]+b[["bin_male:age"]])*ages +
-    (b[["age_sq"]]+b[["bin_male:age_sq"]])*(ages^2)
-  
-  # Peaks (sex-specific)
-  pf_peak <- - b[["age"]] / (2*b[["age_sq"]])
-  pm_peak <- - (b[["age"]]+b[["bin_male:age"]]) / (2*(b[["age_sq"]]+b[["bin_male:age_sq"]]))
-  
-  c(pf, pm, pf_peak, pm_peak)
-}
-
-set.seed(123)
-boot_res <- boot(df_clean, boot_fun, R = 1000)
-
-# Unpack bootstrap draws
-nAges <- length(ages)
-bm    <- boot_res$t                             # B x (2*nAges + 2)
-bf    <- bm[, 1:nAges]                          # female ln preds
-bmle  <- bm[, (nAges+1):(2*nAges)]              # male   ln preds
-bpf   <- bm[, 2*nAges + 1]                      # female peak
-bpm   <- bm[, 2*nAges + 2]                      # male   peak
-
-# Pointwise 95% CIs for ln-preds by age and sex
-ci_female <- apply(bf,   2, quantile, c(.025,.975))
-ci_male   <- apply(bmle, 2, quantile, c(.025,.975))
-
-# 95% CIs for peaks
-ci_peak_f <- quantile(bpf, c(.025,.975))
-ci_peak_m <- quantile(bpm, c(.025,.975))
-
-# =========================
-# 5) Plot (simple): ln(income) only
-#    - Lines for predicted ln(income)
-#    - Shaded ribbons = 95% CI
-#    - Two dashed vertical lines at peaks (female & male)
-# =========================
-df_plot <- bind_rows(
-  tibble(age = ages, sex = "Female",
-         lny = pred_female,
-         lny_lo = ci_female[1,], lny_hi = ci_female[2,]),
-  tibble(age = ages, sex = "Male",
-         lny = pred_male,
-         lny_lo = ci_male[1,],   lny_hi = ci_male[2,])
+model_age <- lm(
+  ln_ingtot_h ~ age + age_sq +
+    bin_male + bin_male:age + bin_male:age_sq +
+    estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+  data = df_clean
 )
 
-p <- ggplot(df_plot, aes(x = age, y = lny, color = sex, fill = sex)) +
-  geom_ribbon(aes(ymin = lny_lo, ymax = lny_hi), alpha = 0.20, color = NA) +
-  geom_line(size = 1.05) +
-  geom_vline(xintercept = peak_female, linetype = "dashed") +
-  geom_vline(xintercept = peak_male,   linetype = "dashed") +
-  labs(
-    title = "Predicted Age–Wage Profile (ln income) with 95% CIs",
-    subtitle = sprintf("Female peak: %.1f (95%% CI: %.1f–%.1f) | Male peak: %.1f (95%% CI: %.1f–%.1f)",
-                       peak_female, ci_peak_f[1], ci_peak_f[2],
-                       peak_male,   ci_peak_m[1], ci_peak_m[2]),
-    x = "Age", y = "ln(income)", color = "Sex", fill = "Sex",
-    caption = "Notes: FWL for β’s; intercept from full OLS. CIs via bootstrap over the sum of betas."
-  ) +
-  theme_minimal(base_size = 12) +
-  theme(legend.position = "top")
+# =========================
+# 4) Bootstrap para curvas completas
+# =========================
 
-print(p)
+library(boot)
 
-# peak ages plot 
+# (4.1) Función bootstrap:
+#       - data: df_clean
+#       - indices: remuestreo con reemplazo
+#       - devuelve: predicciones para cada fila de df_pred
+boot_curve_fun <- function(data, indices) {
+  d <- data[indices, ]
+  
+  # Reajustar modelo con la muestra bootstrap
+  fit <- lm(
+    ln_ingtot_h ~ age + age_sq +
+      bin_male + bin_male:age + bin_male:age_sq +
+      estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+    data = d
+  )
+  
+  # Predicciones en la misma grilla df_pred
+  predict(fit, newdata = df_pred)
+}
 
-# Predicciones con intervalos de confianza
-coefs_model5 <- coef(model5)
-b1 <- coefs_model5["age"]         
-b2 <- coefs_model5["age_sq"]       
-b4 <- coefs_model5["age:bin_male"] 
-b5 <- coefs_model5["age_sq:bin_male"] 
+# (4.2) Ejecutar bootstrap
+set.seed(123)
+boot_R <- 500  # usa 1000 o 2000 si quieres más precisión
+boot_res <- boot::boot(data = df_clean, statistic = boot_curve_fun, R = boot_R)
 
-peak_f <- -b1 / (2*b2)                    # Para mujeres
-peak_m <- -(b1 + b4) / (2*(b2 + b5))      # Para hombres
+# (4.3) Calcular intervalos percentiles por cada fila de df_pred
+#       boot_res$t es una matriz de R x nrow(df_pred)
+boot_mat <- boot_res$t
 
+ci_mat <- t(apply(boot_mat, 2, quantile, probs = c(0.05, 0.95), na.rm = TRUE))
 
-pred <- predict(model5, newdata = geih, interval = "confidence")
-geih <- geih %>%
+# (4.4) Añadimos estas bandas bootstrap a df_pred
+df_pred <- df_pred %>%
   mutate(
-    fit = pred[, "fit"],
-    lwr = pred[, "lwr"],
-    upr = pred[, "upr"],
-    sex = ifelse(bin_male == 1, "Male", "Female")
+    fit_boot = boot_res$t0,    # predicción original
+    lwr_boot = ci_mat[,1],     # límite inferior 2.5%
+    upr_boot = ci_mat[,2]      # límite superior 97.5%
   )
 
-ggplot(geih, aes(x = age, y = fit, color = sex, fill = sex)) +
-  geom_line(size = 1) +  # predicted line
-  geom_ribbon(aes(ymin = lwr, ymax = upr), alpha = 0.2, color = NA) + # shaded CI
+# =========================
+# Grafica
+# =========================
+
+# (1) Extraer coeficientes del modelo original
+coefs <- coef(model_age)
+
+b_age  <- coefs["age"]
+b_age2 <- coefs["age_sq"]
+
+# Manejo robusto de las interacciones (pueden llamarse "bin_male:age" o "age:bin_male")
+nm_int1 <- grep("^(bin_male:age|age:bin_male)$", names(coefs), value = TRUE)
+nm_int2 <- grep("^(bin_male:age_sq|age_sq:bin_male)$", names(coefs), value = TRUE)
+
+b_int1 <- if (length(nm_int1) == 1) coefs[nm_int1] else 0
+b_int2 <- if (length(nm_int2) == 1) coefs[nm_int2] else 0
+
+# (2) Calcular picos
+peak_female <- -b_age / (2 * b_age2)
+peak_male   <- -(b_age + b_int1) / (2 * (b_age2 + b_int2))
+
+# (3) Gráfico con bandas bootstrap y líneas verticales
+ggplot(df_pred, aes(x = age, y = fit_boot, color = sex, fill = sex)) +
+  geom_line(linewidth = 1) +
+  geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot), alpha = 0.2, color = NA) +
+  geom_vline(xintercept = peak_female, linetype = "dashed", color = "red") +
+  geom_vline(xintercept = peak_male,   linetype = "dashed", color = "blue") +
   labs(
-    title = "Predicted log-salary by Age and Sex with 95% Confidence Areas",
-    x = "Age", y = "Predicted log(salary)"
+    title = "Predicted log-salary by Age and Gender (Bootstrap 95% CI)",
+    x = "Age",
+    y = "Predicted log(salary)"
   ) +
   theme_minimal()
-
 
 # Ejercicio 5 -------------------------------------------------------------
 
