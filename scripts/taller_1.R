@@ -184,6 +184,28 @@ df <- df %>%
   ungroup() %>%
   select(-group_mean)
 
+# Histogram of ln_ingtot_h (not taking into account NAs)
+x <- df$y_total_m_ha
+hist(x[!is.na(x)],
+     breaks = 40,
+     main = "Histogram: y_total_m_ha",
+     xlab  = "ln_ingtot_h")
+
+x <- x[is.finite(x)]
+
+#Buscamos si hay outliers y cuántos
+pcts <- data.frame(
+  percentile = 1:100,
+  value = as.numeric(quantile(x, probs = (1:100)/100, na.rm = TRUE, names = FALSE, type = 7))
+)
+print(pcts, row.names = FALSE)
+#Hay una variable muy alta en el percentil 1%
+p99 <- quantile(df$y_total_m_ha[is.finite(df$y_total_m_ha)], 0.99, na.rm = TRUE, type = 7)
+
+# ) La elminamos  > p99 (keep NAs as-is)
+df <- df %>% filter(is.na(y_total_m_ha) | y_total_m_ha <= p99)
+
+
 # ---- Usage ----
 
 # We drop useless variables:
