@@ -305,7 +305,7 @@ vars_needed <- c("ln_ingtot_h", "bin_male", "age", "age_sq", "estrato1",
 df_clean <- df %>% filter(if_all(all_of(vars_needed), ~ !is.na(.)))
 
 # Now run the FWL steps
-controles <- ~ age + age_sq + estrato1 + oficio + hoursWorkUsual + maxEducLevel + cuentaPropia + experience
+controles <- ~ age + age_sq + estrato1 + oficio + maxEducLevel + cuentaPropia + experience
 
 y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_clean))
 d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_clean))
@@ -316,7 +316,7 @@ stargazer(model4_fwl, type = 'text')
 fwl_boot <- function(data, indices) {
   df_sample <- data[indices, ]
   
-  controles <- ~ age + age_sq + estrato1 + oficio + hoursWorkUsual + maxEducLevel + cuentaPropia + experience
+  controles <- ~ age + age_sq + estrato1 + oficio + maxEducLevel + cuentaPropia + experience
   
   y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_sample))
   d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_sample))
@@ -344,42 +344,41 @@ comparison <- data.frame(
 print(comparison)
 
 # Intento 4c ----------------------------
-# =========================
-# 0) Libraries
-# =========================
 library(dplyr)
 library(ggplot2)
 library(boot)
 
-# =========================
-# 1) Data prep & types
-#    - Ensure factors are factors
-#    - Keep bin_male as 0/1 numeric
-# =========================
-
-
-# =========================
-# 2) Modelo
-# (2.1) Por si acaso, garantizamos que exista age_sq.
-#       Esto hace que el perfil edad–salario pueda ser cóncavo (sube y luego baja).
-if (!"age_sq" %in% names(df_clean)) {
-  df_clean <- df_clean %>% mutate(age_sq = age^2)
-}
+vars_needed <- c("ln_ingtot_h", "bin_male", "age", "age_sq", "estrato1", 
+                 "oficio", "cuentaPropia", "maxEducLevel", "experience")
 
 model_age <- lm(
-  ln_ingtot_h ~ age + age_sq +
+  ln_ingtot_h ~ age + age_sq + 
     bin_male + bin_male:age + bin_male:age_sq +
-    estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+    estrato1 + oficio + cuentaPropia + maxEducLevel + experience,
   data = df_clean
 )
 
-# =========================
-# 4) Bootstrap para curvas completas
-# =========================
+#converitr en factores
+df_clean <- df_clean %>%
+  mutate(
+    estrato1     = as.factor(estrato1),
+    oficio       = as.factor(oficio),
+    cuentaPropia = as.factor(cuentaPropia),
+    maxEducLevel = as.factor(maxEducLevel)
+  )
 
-library(boot)
+df_pred <- expand.grid(
+  age          = seq(16, 85, by = 1),
+  bin_male     = c(0, 1),
+  estrato1     = levels(df_clean$estrato1)[1],
+  oficio       = levels(df_clean$oficio)[1],
+  cuentaPropia = levels(df_clean$cuentaPropia)[1],
+  maxEducLevel = levels(df_clean$maxEducLevel)[1],
+  experience   = mean(df_clean$experience, na.rm = TRUE)
+) %>%
+  mutate(age_sq = age^2)  # agregamos el término cuadrático
 
-# (4.1) Función bootstrap:
+# Función bootstrap:
 #       - data: df_clean
 #       - indices: remuestreo con reemplazo
 #       - devuelve: predicciones para cada fila de df_pred
@@ -390,7 +389,7 @@ boot_curve_fun <- function(data, indices) {
   fit <- lm(
     ln_ingtot_h ~ age + age_sq +
       bin_male + bin_male:age + bin_male:age_sq +
-      estrato1 + oficio + hoursWorkUsual + maxEducLevel,
+      estrato1 + oficio + maxEducLevel + cuentaPropia + experience,
     data = d
   )
   
@@ -398,13 +397,12 @@ boot_curve_fun <- function(data, indices) {
   predict(fit, newdata = df_pred)
 }
 
-# (4.2) Ejecutar bootstrap
+# Ejecutar bootstrap
 set.seed(111)
-boot_R <- 1000
-boot_res <- boot::boot(data = df_clean, statistic = boot_curve_fun, R = boot_R)
+boot_res <- boot::boot(data = df_clean, statistic = boot_curve_fun, R = 1000)
 
-# (4.3) Calcular intervalos percentiles por cada fila de df_pred
-#       boot_res$t es una matriz de R x nrow(df_pred)
+# Calcular intervalos percentiles por cada fila de df_pred
+# boot_res$t es una matriz de R x nrow(df_pred)
 boot_mat <- boot_res$t
 
 ci_mat <- t(apply(boot_mat, 2, quantile, probs = c(0.05, 0.95), na.rm = TRUE))
@@ -438,27 +436,28 @@ b_int2 <- if (length(nm_int2) == 1) coefs[nm_int2] else 0
 peak_female <- -b_age / (2 * b_age2)
 peak_male   <- -(b_age + b_int1) / (2 * (b_age2 + b_int2))
 
+
 # (3) Gráfico con bandas bootstrap y líneas verticales
-ggplot(df_pred, aes(x = age, y = fit_boot, color = sex, fill = sex)) +
+ggplot(df_pred, aes(x = age, y = fit_boot, color = factor(bin_male), fill = factor(bin_male))) +
   geom_line(linewidth = 1) +
-  geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot), alpha = 0.2, color = NA) +
-  # líneas verticales
+  geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot, group = bin_male),
+              alpha = 0.2, color = NA) +
   geom_vline(xintercept = peak_female, linetype = "dashed", color = "red") +
   geom_vline(xintercept = peak_male,   linetype = "dashed", color = "blue") +
-  # etiquetas con solo el número
   annotate("text", x = peak_female, y = max(df_pred$fit_boot, na.rm = TRUE),
-           label = round(peak_female, 1), color = "red", size = 4, fontface = "bold", vjust = -0.5) +
+           label = round(peak_female, 1), color = "red",
+           size = 4, fontface = "bold", vjust = -0.5) +
   annotate("text", x = peak_male, y = max(df_pred$fit_boot, na.rm = TRUE),
-           label = round(peak_male, 1), color = "blue", size = 4, fontface = "bold", vjust = -0.5) +
+           label = round(peak_male, 1), color = "blue",
+           size = 4, fontface = "bold", vjust = -0.5) +
   labs(
     title = "Predicted log-salary by Age and Gender (Bootstrap 95% CI)",
     x = "Age",
-    y = "Predicted log(salary)"
+    y = "Predicted log(salary)",
+    color = "bin_male",
+    fill  = "bin_male"
   ) +
   theme_minimal()
-
-
-
 
 # Ejercicio 5 -------------------------------------------------------------
 
