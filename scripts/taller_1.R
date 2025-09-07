@@ -8,21 +8,23 @@ options("scipen"=100, "digits"=4)
 
 library(pacman)
 p_load(tidyverse, rvest, writexl, readxl,
-       gt, gtsummary, caret, boot, stargazer)
+       gt, gtsummary, caret, boot, stargazer,
+       skimr)
 # source(paste0(wd_main, wd_code, "/aux_functions.R")) Descomentar esto luego
 
 # Estableciendo rutas -----------------------------------------------------
 
-wd_main <- "taller_1"
-wd_code <- "scripts"
-wd_output <- "stores"
-wd_views <- "views"
+wd_main <- "C:/Users/Juan/OneDrive - Universidad de los andes/Escritorio/Universidad/Posgrado/1. Primer Semestre/Big Data y Machine Learning/Trabajos/taller_1"
+wd_code <- "/scripts"
+wd_output <- "/stores"
+wd_views <- "/views"
 
 # Definiciones necesarias -------------------------------------------------
 
 geih <- data.frame()
+source(paste0(wd_main, wd_code, "/aux_functions_v2.R"))
 
-# Ejercicio 1 -------------------------------------------------------------
+# Ejercicio 1. Scrapeo de datos -------------------------------------------
 # Scrapeando datos de la página
 
 url_base <- "https://ignaciomsarmiento.github.io/GEIH2018_sample/"
@@ -47,246 +49,171 @@ for (i in seq(1, length(pages))){
 
 geih[1] <- NULL
 
-write_xlsx(geih, paste0(wd_output, "/base_geih.xlsx"))
+write_xlsx(geih, paste0(wd_main, wd_output, "/base_geih.xlsx"))
 
-geih <- read_xlsx(paste0(wd_output, "/base_geih.xlsx"))
-# Explorando los datos v1 -------------------------------------------------------------
+geih <- read_xlsx(paste0(wd_main, wd_output, "/base_geih.xlsx"))
 
-#hist(geih$y_salary_m, breaks = 150,
-#     main = "Histogram of salary",
-#     xlab = "Salary")
-#abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
-#abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
-#text(x = 30000000,
-#     y = 3000,
-#     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
-#text(x = 30000000,
-#     y = 2800,
-#     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
+# Ejercicio 2. Limpieza de datos ------------------------------------------
 
-# Imputación 
+# Limpiando las variables de interés.
 
-# Crreo que podemos hacer ejercicios más complejos de imputación más complejo y 
-# con una limpieza de datos más profunda
-#geih <- geih %>% 
-#  mutate(y_salary_m = ifelse(is.na(y_salary_m), median(y_salary_m, na.rm = TRUE), y_salary_m))
+geih_clean <- geih %>% 
+  mutate(estrato1 = as.factor(estrato1),
+         oficio = as.factor(oficio),
+         maxEducLevel = as.factor(maxEducLevel),
+         relab = as.factor(relab),
+         p6240 = as.factor(p6240),
+         p7040 = as.factor(p7040),
+         p7050 = as.factor(p7050),
+         age_sq = age^2,
+         ln_ingtot_h = log(y_total_m_ha+1e-10)) %>% 
+  rename(type_occup = relab,
+         activity_time = p6240,
+         second_job = p7040,
+         activity_second_job = p7050,
+         experience = p6426,
+         bin_male = sex,
+         bin_selfemp = cuentaPropia) %>% 
+  filter(age > 18,
+         dsi == 0,
+         age <= 82)
 
-# Histograma después de la imputación.
-#hist(geih$y_salary_m, breaks = 150,
-#     main = "Histogram of salary",
-#     xlab = "Salary")
-#abline(v = mean(geih$y_salary_m, na.rm = TRUE), col = 'red', lty = 2, lwd = 2)
-#abline(v = median(geih$y_salary_m, na.rm = TRUE), col = 'blue', lty = 2, lwd = 2)
-#text(x = 300000000
-#     y = 20000,
-#     labels = paste0("Mean is: ", round(mean(geih$y_salary_m, na.rm = TRUE))))
-#text(x = 30000000,
-#     y = 18000,
-#     labels = paste0("Median is: ", round(median(geih$y_salary_m, na.rm = TRUE))))
+# Revisamos la cantidad de missing values de la base.
 
-#Explorando los datos v1
-# Explorando los datos v2 ------------------------------------------------------
-df <- geih
-table(df$dominio)
+geih_miss <- skim(geih_clean) %>%
+  select(skim_variable, n_missing) %>% 
+  mutate(perc_missing = n_missing/nrow(geih)) %>% 
+  arrange(-n_missing)
 
-# Definimos nuestra población de interés
-# Edad objetivo Mayores de 16 (de acuerdo con el código de infancia y adolescencia)
+# Estadísticas descriptivas
 
-df <- df %>% filter(age>=15)
+# Gráficos
 
-# We examine the variable age in depth
+# Concentración del salario por grupo sexo
 
-quantile(df$age, probs = 0.99, na.rm = TRUE)
+ggplot(geih_clean, aes(as.factor(bin_male), ln_ingtot_h)) +
+  geom_boxplot(alpha = 0.7, width = 0.6, color = "black", outlier.colour = "blue", outlier.alpha = 0.6) +
+  labs(x = "Sexo", y = "Ingreso total por hora (log)") +
+  scale_x_discrete(labels = c("0" = "Mujer", "1" = "Hombre")) +
+  theme_minimal()
 
-df <- filter(df, age<=85)
-#Variables of interes:
-#y_ingLab_m_ha ; labor income salaried - nomial hourly - all occ.
-#y_total_m_ha ; income salaried + independents total - nominal hourly
+ggsave(paste0(wd_main, wd_views, "/salario_sexo.png"))
 
-#We check which of the variables has less missing values;
+# Concentración del salario por grupo etario
 
-colSums(is.na(df[c("y_ingLab_m_ha", "y_total_m_ha")]))
-#y_total_m_ha
+geih_clean <- geih_clean %>%
+  filter(age <= 82) %>% 
+  mutate(age_group = cut(age, breaks = seq(15, 80, by = 5), right = FALSE)) %>% 
+  drop_na(age, ln_ingtot_h)
 
-#Data imputation: two approaches: 1
-#Basic conditions for a value that is imputated ingtot != 0
-#If it has any other value in the hourly nominal variables the maximum vakue 
-#that is the value it needs imputated
-# If it has a value on the monthly nominal variables, the maximun needs to be divided by the hours worked
+ggplot(geih_clean, aes(age_group, ln_ingtot_h)) +
+  geom_boxplot(alpha = 0.7, width = 0.6, color = "black",
+               outlier.colour = "blue", outlier.alpha = 0.6) +
+  labs(x = "Grupo de edad (años)", y = "Ingreso total por hora (log)") +
+  theme_minimal()
 
-impute_y_total_m_ha_level1 <- function(df) {
-  hourly_vars  <- c("y_gananciaIndep_m_hu")  
-  monthly_vars <- c("y_gananciaIndep_m", "y_ingLab_m", "y_salary_m", "y_total_m")
+# Concentración del salario por grupo educativo
+
+ggplot(geih_clean, aes(maxEducLevel, ln_ingtot_h)) +
+  geom_boxplot(alpha = 0.7, width = 0.6, color = "black",
+               outlier.colour = "blue", outlier.alpha = 0.6) +
+  scale_x_discrete(labels = c("1" = "Ninguno", "2" = "Pre-escolar",
+                              "3" = "Primaria incomp.", "4" = "Primaria comp.",
+                              "5" = "Secundaria incomp.", "6" = "Secundaria comp.",
+                              "7"  = "Terciaria")) +
+  labs(x = "Máximo nivel educativo", y = "Ingreso total por hora (log)") +
+  theme_minimal()
+
+ggsave(paste0(wd_main, wd_views, "/salario_educacion.png"))
+
+# Concentración de cuenta propia
+
+ggplot(geih_clean, aes(as.factor(bin_selfemp), ln_ingtot_h)) +
+  geom_boxplot(alpha = 0.7, width = 0.6, color = "black", outlier.colour = "blue", outlier.alpha = 0.6) +
+  labs(x = "Sexo", y = "Ingreso total por hora (log)") +
+  scale_x_discrete(labels = c("0" = "No Cuenta Propia", "1" = "Cuenta Propia")) +
+  theme_minimal()
+
+ggsave(paste0(wd_main, wd_views, "/salario_cuenta_propa.png"))
+
+
+# Ejercicio 3. Age-wage profile -------------------------------------------
+
+# Tabla de regresión
+
+model_3 <- lm(ln_ingtot_h ~ age + age_sq, data = geih_clean)
+i1 <- coef(model_3)
+stargazer(model_3, type = "text")
+
+# Desempeño en la muestra
+
+eta_fn <- function(data, index){
   
-  df %>% 
-    rowwise() %>%
-    mutate(
-      # Rowwise max among hourly vars
-      max_hourly = {
-        vals <- c_across(all_of(hourly_vars))
-        if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
-      },
-      # Rowwise max among monthly vars
-      max_monthly = {
-        vals <- c_across(all_of(monthly_vars))
-        if (all(is.na(vals))) NA_real_ else max(vals, na.rm = TRUE)
-      },
-      # Convert monthly max to hourly
-      candidate_from_monthly = if (!is.na(max_monthly) && !is.na(hoursWorkUsual) && hoursWorkUsual > 0) {
-        max_monthly / (hoursWorkUsual * 4)
-      } else {
-        NA_real_
-      },
-      candidate = coalesce(max_hourly, candidate_from_monthly),
-      
-      # Overwrite y_total_m_ha only when imputation applies
-      y_total_m_ha = case_when(
-        ingtot != 0 & (is.na(y_total_m_ha) | y_total_m_ha <= 0) & !is.na(max_hourly) ~ max_hourly,
-        ingtot != 0 & (is.na(y_total_m_ha) | y_total_m_ha <= 0) & is.na(max_hourly) & !is.na(candidate_from_monthly) ~ candidate_from_monthly,
-        TRUE ~ y_total_m_ha
-      )
-    ) %>%
-    ungroup() %>%
-    select(-max_hourly, -max_monthly, -candidate_from_monthly, -candidate) # drop helpers
+    d <- data[index, , drop = FALSE]
+    m <- lm(ln_ingtot_h ~ age + age_sq, data = d)
+    B <- coef(m)
+
+    peak_age <- - B["age"] / (2 * B["age_sq"])
+    return(as.numeric(peak_age))
 }
 
-df <- impute_y_total_m_ha_level1(df)
+# Graficando perfil edad-salario
 
-#Replace with 0 if ingtot==0, to account for people who had no income at all
+ic_boot <- boot(data = geih_clean, statistic = eta_fn, R = 1000)
+peak_age <- as.numeric(ic_boot$t0)
 
+ci_bca <- boot.ci(ic_boot, type = "bca")
+low <- ci_bca$bca[4]
+high <- ci_bca$bca[5]
 
-geih <- geih %>%
-  filter(y_total_m_ha != 0)
+age_grid <- data.frame(age = seq(floor(min(geih_clean$age)),
+                                 ceiling(max(geih_clean$age)),
+                                 by = 1)) %>% 
+  mutate(age_sq = age^2)
 
-# Check for people who spend hours working but had no income
-sum(is.na(df$y_total_m_ha))
+pred_df <- cbind(age_grid, as.data.frame(predict(model_3, newdata = age_grid,
+                                                 se.fit = TRUE))) %>% 
+  mutate(lwr = fit - 1.96*se.fit,
+         upr = fit + 1.96*se.fit)
 
-#There is 1524 individuals that worked that week but have no hourly income
+shade_df <- data.frame(xmin = low, xmax = high, ymin = -Inf, ymax = Inf)
 
-table(is.na(df$y_total_m_ha), is.na(df$hoursWorkUsual))
-
-# If someone worked anytimes of hours, but has no hourly wage, then the mean 
-#of the people that have the same sex and oficio are imputated as hourly wage
-
-df <- df %>%
-  group_by(sex, oficio) %>%
-  mutate(
-    # Compute group mean (exclude NA automatically)
-    group_mean = if (all(is.na(y_total_m_ha))) NA_real_ else mean(y_total_m_ha, na.rm = TRUE),
-    
-    # Replace directly into y_total_m_ha
-    y_total_m_ha = if_else(
-      !is.na(hoursWorkUsual) & is.na(y_total_m_ha) & !is.na(group_mean),
-      group_mean,
-      y_total_m_ha
-    )
-  ) %>%
-  ungroup() %>%
-  select(-group_mean)
-
-# ---- Usage ----
-
-# We drop useless variables:
-
-df <- select(df, -dominio, -depto, -fex_dpto, -clase)
-
-#Check the nature of relevant, non binary variables:
-sapply(df[c("estrato1", "oficio","maxEducLevel", "relab", "p6240", "p7040", "p7050")], class)
-
-# Change the values to factors
-
-df$estrato1      <- as.factor(df$estrato1)
-df$oficio        <- as.factor(df$oficio)
-df$maxEducLevel  <- as.factor(df$maxEducLevel)
-df$relab         <- as.factor(df$relab)
-df$p6240         <- as.factor(df$p6240)
-df$p7040         <- as.factor(df$p7040)
-df$p7050         <- as.factor(df$p7050)
-
-#rename some variables:
-
-df <- df %>% rename(
-  type_occup = relab,
-  activity_time = p6240,
-  second_job = p7040,
-  activity_second_job = p7050,
-  experience = p6426
-)
-
-
-# We check the amount of na's based on 
-colSums(is.na(df[c("estrato1", "oficio","maxEducLevel", "type_occup", "activity_time", "second_job", "activity_second_job")]))
-
-# second_job has a lot of NA's the same number as in oficio
-table(df$second_job) # Valores muy bajos de sí, con muchos missings. No es una buena idea. bad controls?
-
-# Ejercicio 3 -------------------------------------------------------------
-
-# Creando las variables del modelo (2)
-geih <- geih %>% 
-  mutate(age_sq = age^2,
-         log_salary_m = log(y_salary_m))
-
-# Corriendo el modelo (2)
-model2 <- lm(log_salary_m ~ age+age_sq, data = geih)
-stargazer(model2, type = "text")
-
-# Hallando los intervalos de confianza utilizando bootstrap.
-
-ci_model2 <- function(data, index){
-
-  model2 <- lm(log_salary_m ~ age+age_sq, data = geih, subset = index)
-  coefs <- model2$coefficients
-  
-  b1 <- coefs[1]
-  # b2 <- coefs[2]
-  
-}
-
-boot(geih, ci_model2, R = 1000) # Creo que está sacando el beta 0
-
-# Propuesta bootstrap
-ci_model2 <- function(data, index){
-  model2 <- lm(log_salary_m ~ age + age_sq, data = data, subset = index)
-  return(coef(model2)[c("age", "age_sq")])
-}
-
-results <- boot(geih, ci_model2, R = 1000)
-
-boot.ci(results, type = "perc", index = 1)  # For age
-boot.ci(results, type = "perc", index = 2)  # For age_sq
-
-
+ggplot() +
+  geom_point(data = geih_clean, aes(age, ln_ingtot_h), alpha = 0.2, size = 0.8) +
+  geom_rect(data = na.omit(shade_df),
+            aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+            inherit.aes = FALSE, alpha = 0.2) +
+  geom_ribbon(data = pred_df, aes(age, ymin = lwr, ymax = upr), alpha = 0.2, fill = "blue") +
+  geom_line  (data = pred_df, aes(age, y = fit), linewidth = 1) +
+  labs(x = "Edad", y = "Ingresos por hora (log)") +
+  theme_minimal()
 
 # Ejercicio 4 -------------------------------------------------------------
 
-# Estimando modelo
-df <- rename(df, 'bin_male'='sex')
-df <- df %>% mutate(
-  ln_ingtot_h = log(y_total_m_ha+1e-10)
-)
+# Estimando los modelos
+#Cambia
+geih_clean$bin_male <- ifelse(geih_clean$bin_male == 1, 0, 1)
+geih_clean <- rename(geih_clean, 'bin_female'='bin_male')
 
-df <- df %>% mutate(
-  age_sq = age^2)
+#Ejercicio 4.a
+model3_4 <- lm(ln_ingtot_h ~ bin_female, data = geih_clean)
+stargazer(model3_4, type = 'text')
 
-model3 <- lm(ln_ingtot_h ~ bin_male, data = df)
-out_tex <- file.path(wd_views, "model3.tex")
-stargazer(model3, type = 'text')
-stargazer(model3, type = 'latex', out=out_tex)
+#Ejercicio 4.b 
+geih_clean <- geih_clean %>% mutate(
+  experience_sq = experience^2)
 
-
-# Define all variables used in both models
-vars_needed <- c("ln_ingtot_h", "bin_male", "age", "age_sq", "estrato1", 
-                 "oficio", "cuentaPropia", "maxEducLevel", "experience")
+vars_needed <- c("ln_ingtot_h", "bin_female", "age", "age_sq", "estrato1", 
+                 "sizeFirm", "maxEducLevel", "experience")
 
 # Filter out rows with any missing values in those variables
-df_clean <- df %>% filter(if_all(all_of(vars_needed), ~ !is.na(.)))
+geih_clean <- geih_clean %>% filter(if_all(all_of(vars_needed), ~ !is.na(.)))
 
 # Now run the FWL steps
-controles <- ~ age + age_sq + estrato1 + oficio + maxEducLevel + cuentaPropia + experience
+controles <- ~ age + age_sq + estrato1 + maxEducLevel + bin_selfemp + experience + experience_sq + sizeFirm
 
-y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_clean))
-d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_clean))
+y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = geih_clean))
+d_tilde <- resid(lm(update(controles, bin_female ~ .), data = geih_clean))
 
 model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
 stargazer(model4_fwl, type = 'text')
@@ -294,18 +221,14 @@ stargazer(model4_fwl, type = 'text')
 fwl_boot <- function(data, indices) {
   df_sample <- data[indices, ]
   
-  controles <- ~ age + age_sq + estrato1 + oficio + maxEducLevel + cuentaPropia + experience
+  controles <- ~ age + age_sq + estrato1 + maxEducLevel + informal + experience + experience_sq + sizeFirm
   
   y_tilde <- resid(lm(update(controles, ln_ingtot_h ~ .), data = df_sample))
-  d_tilde <- resid(lm(update(controles, bin_male ~ .), data = df_sample))
+  d_tilde <- resid(lm(update(controles, bin_female ~ .), data = df_sample))
   
   coef(lm(y_tilde ~ 0 + d_tilde))[1]
 }
-
-library(boot)
-
-set.seed(123) 
-boot_results <- boot(data = df_clean, statistic = fwl_boot, R = 1000)
+boot_results <- boot(data = geih_clean, statistic = fwl_boot, R = 500)
 
 # View results
 boot_results
@@ -322,61 +245,42 @@ comparison <- data.frame(
 print(comparison)
 
 # Intento 4c ----------------------------
-library(dplyr)
-library(ggplot2)
-library(boot)
-
-vars_needed <- c("ln_ingtot_h", "bin_male", "age", "age_sq", "estrato1", 
+vars_needed <- c("ln_ingtot_h", "bin_female", "age", "age_sq", "estrato1", 
                  "oficio", "cuentaPropia", "maxEducLevel", "experience")
 
 model_age <- lm(
   ln_ingtot_h ~ age + age_sq + 
-    bin_male + bin_male:age + bin_male:age_sq +
-    estrato1 + oficio + cuentaPropia + maxEducLevel + experience,
-  data = df_clean
-)
+    bin_female + bin_female:age + bin_female:age_sq +
+    estrato1 + oficio + bin_selfemp + maxEducLevel + experience,
+  data = geih_clean)
 
 #converitr en factores
-df_clean <- df_clean %>%
-  mutate(
-    estrato1     = as.factor(estrato1),
-    oficio       = as.factor(oficio),
-    cuentaPropia = as.factor(cuentaPropia),
-    maxEducLevel = as.factor(maxEducLevel)
-  )
 
 df_pred <- expand.grid(
-  age          = seq(16, 85, by = 1),
-  bin_male     = c(0, 1),
-  estrato1     = levels(df_clean$estrato1)[1],
-  oficio       = levels(df_clean$oficio)[1],
-  cuentaPropia = levels(df_clean$cuentaPropia)[1],
-  maxEducLevel = levels(df_clean$maxEducLevel)[1],
-  experience   = mean(df_clean$experience, na.rm = TRUE)
-) %>%
-  mutate(age_sq = age^2)  # agregamos el término cuadrático
+  age          = seq(18, 85, by = 1),
+  bin_female   = c(0, 1),
+  estrato1     = levels(geih_clean$estrato1)[1],
+  oficio       = levels(geih_clean$oficio)[1],
+  cuentaPropia = levels(geih_clean$bin_selfemp)[1],
+  maxEducLevel = levels(geih_clean$maxEducLevel)[1],
+  experience   = mean(geih_clean$experience, na.rm = TRUE)) %>%
+  mutate(age_sq = geih_clean$age^2)  # agregamos el término cuadrático
 
-# Función bootstrap:
-#       - data: df_clean
-#       - indices: remuestreo con reemplazo
-#       - devuelve: predicciones para cada fila de df_pred
 boot_curve_fun <- function(data, indices) {
   d <- data[indices, ]
   
   # Reajustar modelo con la muestra bootstrap
   fit <- lm(
     ln_ingtot_h ~ age + age_sq +
-      bin_male + bin_male:age + bin_male:age_sq +
-      estrato1 + oficio + maxEducLevel + cuentaPropia + experience,
-    data = d
-  )
+      bin_female + bin_female:age + bin_female:age_sq +
+      estrato1 + oficio + maxEducLevel + cuentaPropia + experience, data = d)
   
   # Predicciones en la misma grilla df_pred
   predict(fit, newdata = df_pred)
 }
 
 # Ejecutar bootstrap
-set.seed(111)
+
 boot_res <- boot::boot(data = df_clean, statistic = boot_curve_fun, R = 1000)
 
 # Calcular intervalos percentiles por cada fila de df_pred
@@ -403,9 +307,9 @@ coefs <- coef(model_age)
 b_age  <- coefs["age"]
 b_age2 <- coefs["age_sq"]
 
-# Manejo robusto de las interacciones (pueden llamarse "bin_male:age" o "age:bin_male")
-nm_int1 <- grep("^(bin_male:age|age:bin_male)$", names(coefs), value = TRUE)
-nm_int2 <- grep("^(bin_male:age_sq|age_sq:bin_male)$", names(coefs), value = TRUE)
+# Manejo robusto de las interacciones (pueden llamarse "bin_female:age" o "age:bin_female")
+nm_int1 <- grep("^(bin_female:age|age:bin_female)$", names(coefs), value = TRUE)
+nm_int2 <- grep("^(bin_female:age_sq|age_sq:bin_female)$", names(coefs), value = TRUE)
 
 b_int1 <- if (length(nm_int1) == 1) coefs[nm_int1] else 0
 b_int2 <- if (length(nm_int2) == 1) coefs[nm_int2] else 0
@@ -416,9 +320,9 @@ peak_male   <- -(b_age + b_int1) / (2 * (b_age2 + b_int2))
 
 
 # (3) Gráfico con bandas bootstrap y líneas verticales
-ggplot(df_pred, aes(x = age, y = fit_boot, color = factor(bin_male), fill = factor(bin_male))) +
+ggplot(df_pred, aes(x = age, y = fit_boot, color = factor(bin_female), fill = factor(bin_female))) +
   geom_line(linewidth = 1) +
-  geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot, group = bin_male),
+  geom_ribbon(aes(ymin = lwr_boot, ymax = upr_boot, group = bin_female),
               alpha = 0.2, color = NA) +
   geom_vline(xintercept = peak_female, linetype = "dashed", color = "red") +
   geom_vline(xintercept = peak_male,   linetype = "dashed", color = "blue") +
@@ -432,15 +336,82 @@ ggplot(df_pred, aes(x = age, y = fit_boot, color = factor(bin_male), fill = fact
     title = "Predicted log-salary by Age and Gender (Bootstrap 95% CI)",
     x = "Age",
     y = "Predicted log(salary)",
-    color = "bin_male",
-    fill  = "bin_male"
+    color = "bin_female",
+    fill  = "bin_female"
   ) +
   theme_minimal()
 
-# Ejercicio 5 -------------------------------------------------------------
+# Intento gráfica marly -------------------------------------------------------------
+
+vars_needed <- c("ln_ingtot_h", "bin_female", "age", "age_sq", "sizeFirm", "estrato1", "maxEducLevel", "experience")
+
+model_age <- lm(
+  ln_ingtot_h ~ age + age_sq + 
+    bin_female + bin_female:age + bin_female:age_sq +
+    estrato1  + informal + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm,
+  data = df_clean
+)
 
 
+df_pred <- expand.grid(
+  age          = seq(15, 85, by = 1),
+  bin_female     = c(0, 1),
+  estrato1     = levels(df$estrato1)[1],
+  sizeFirm       = levels(df$sizeFirm)[1],
+  informal = levels(df$informal)[1],
+  maxEducLevel = levels(df$maxEducLevel)[1],
+  experience   = mean(df$experience, na.rm = TRUE)
+) %>%
+  mutate(age_sq = age^2)  # agregamos el término cuadrático
 
+# Función bootstrap:
+#       - data: df_clean
+#       - indices: remuestreo con reemplazo
+#       - devuelve: predicciones para cada fila de df_pred
+boot_curve_fun <- function(data, indices) {
+  d <- data[indices, ]
+  
+  # Reajustar modelo con la muestra bootstrap
+  fit <- lm(
+    ln_ingtot_h ~ age + age_sq + 
+      bin_female + bin_female:age + bin_female:age_sq +
+      informal + estrato1 + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm,
+    data = d
+  )
+  
+  # Predicciones en la misma grilla df_pred
+  predict(fit, newdata = df_pred)
+}
 
+# Ejecutar bootstrap
+set.seed(111)
+boot_res <- boot(data = df_clean, statistic = boot_curve_fun, R = 1000)
 
+# Calcular intervalos percentiles por cada fila de df_pred
+# boot_res$t es una matriz de R x nrow(df_pred)
+boot_mat <- boot_res$t
+
+# 5) Matriz R x n_pred y percentiles por punto (fila de df_pred)
+boot_mat <- boot_res$t
+stopifnot(ncol(boot_mat) == nrow(df_pred))
+
+probs <- c(0.05, 0.50, 0.95)  # 5%, mediana, 95%
+ci_mat <- t(apply(boot_mat, 2, quantile, probs = probs, na.rm = TRUE))
+colnames(ci_mat) <- c("p5", "p50", "p95")
+
+ci_df <- bind_cols(df_pred, as.data.frame(ci_mat))
+
+# 6) Gráfico: dos bandas (una por género) con su mediana
+ci_df <- ci_df %>%
+  mutate(genero = if_else(bin_female == 1, "Mujer", "Hombre"))
+
+ggplot(ci_df, aes(x = age, y = p50, group = genero)) +
+  geom_ribbon(aes(ymin = p5, ymax = p95, fill = genero), alpha = 0.2) +
+  geom_line(aes(linetype = genero)) +
+  labs(
+    title = "Curvas de salario (log) por género con IC bootstrap (5%–95%)",
+    x = "Edad",
+    y = "ln(salario horario)"
+  ) +
+  theme_minimal()
 
