@@ -544,5 +544,455 @@ ggplot(ci_df, aes(x = age, y = p50, group = genero)) +
   ) +
   theme_minimal()
 
+# Punto 5 ----------------
+
+set.seed(10101)
+
+df_w <- df%>% filter(!is.na(df$ln_ingtot_h))
+
+df_w <- df%>% filter(!is.infinite(df$ln_ingtot_h))
+
+db_int = df_w%>% filter(ln_ingtot_h > 0)
+
+# vamos a partir las bases de datos
+
+inTrain <- createDataPartition(
+  
+  y = db_int$ln_ingtot_h,  ## the outcome data are needed
+  
+  p = .70, ## The percentage of training data
+  
+  list = FALSE
+  
+)
+
+training <- db_int |> filter(row_number() %in% inTrain)
+
+testing  <- db_int |> filter(!(row_number() %in% inTrain))
+
+# modelo 1
+
+model1_formula <- ln_ingtot_h ~ age+age_sq
+
+model1 <- lm(model1_formula,
+             data = training)
+
+predictions <- predict(object = model1, newdata = testing)
+
+score1a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score1a
+
+# modelo 2 (hasta acá está bien)
+
+model2_formula <- ln_ingtot_h ~ bin_male
+
+model2 <- lm(model2_formula,
+             
+             data = training)
+
+predictions <- predict(object = model2, newdata = testing)
+
+score2a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score2a
+
+# model 3
+
+model3_formula <- ln_ingtot_h ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + estrato1  + cuentaPropia + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm
+
+model3 <- lm(model3_formula,
+             
+             data = training)
+
+training$maxEducLevel <- droplevels(factor(training$maxEducLevel))
+
+testing$maxEducLevel  <- factor(testing$maxEducLevel, levels = levels(training$maxEducLevel))
+
+bad <- is.na(testing$maxEducLevel)    # filas con niveles no vistos
+
+predictions <- predict(model3, newdata = testing[!bad,])
+
+score3a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score3a
+
+# modelo 4 (alucinación 1/5)
+
+model4_formula <- ln_ingtot_h ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + estrato1  + cuentaPropia + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm + oficio
+
+model4 <- lm(model4_formula,
+             
+             data = training)
+
+predictions <- predict(model4, newdata = testing[!bad, ])
+
+score4a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score4a
+
+# modelo 5 (alucinación 2/5)
+
+model5_formula <- ln_ingtot_h ~ 
+  bin_male +
+  age + age_sq +
+  poly(experience, 2, raw = TRUE) +
+  hoursWorkUsual+
+  maxEducLevel +
+  formal +
+  sizeFirm +
+  estrato1 + oficio +
+  bin_male:maxEducLevel + bin_male:formal
+
+model5 <- lm(model5_formula,
+             data = training)
+
+predictions <- predict(model5, newdata = testing[!bad,])
+score5a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score5a
+
+# modelo 6 (alucinación 3/5)
+
+model6_formula <- ln_ingtot_h ~
+  bin_male +
+  poly(age, 2, raw = TRUE) + poly(age, 2, raw = TRUE):bin_male +
+  poly(experience, 4, raw = TRUE) + poly(experience, 3, raw = TRUE):bin_male + poly(experience, 3, raw = TRUE):formal +
+  poly(hoursWorkUsual, 4, raw = TRUE) + poly(hoursWorkUsual, 7, raw = TRUE):bin_male +
+  maxEducLevel + maxEducLevel:formal +
+  formal + bin_male:formal +
+  sizeFirm + bin_male:sizeFirm +
+  estrato1 + oficio + 
+  bin_male:maxEducLevel +  estrato1:maxEducLevel
+
+model6 <- lm(model6_formula,
+             
+             data = training)
+
+predictions <- predict(object = model6, newdata = testing[!bad, ])
+
+score6a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+
+score6a
+
+# modelo 7 (alucinación 4/5)
+
+model7_formula <- ln_ingtot_h ~ 
+  bin_male +
+  poly(age, 3, raw = TRUE) + poly(age, 3, raw = TRUE):bin_male +
+  poly(experience, 3, raw = TRUE) + poly(experience, 3, raw = TRUE):bin_male + poly(experience, 3, raw = TRUE):formal +
+  poly(hoursWorkUsual, 3, raw = TRUE) + poly(hoursWorkUsual, 3, raw = TRUE):bin_male + poly(hoursWorkUsual, 3, raw = TRUE):oficio +
+  maxEducLevel + maxEducLevel+
+  formal + bin_male:formal +
+  sizeFirm + bin_male:sizeFirm +
+  estrato1 + oficio + formal:oficio+
+  bin_male:maxEducLevel +  estrato1:maxEducLevel
+
+model7 <- lm(model7_formula, data = training)
+
+predictions   <- predict(model7, newdata = testing[!bad, ])
+
+score7a  <- RMSE(predictions, testing$ln_ingtot_h)
+
+score7a
+
+# modelo 8 (alucinación 5/5)
+
+model8_formula <- ln_ingtot_h ~
+  
+  (
+    bin_male + formal + sizeFirm +
+      maxEducLevel + estrato1 + oficio +
+      poly(age, 1, raw = TRUE) +
+      poly(experience, 1, raw = TRUE) +
+      poly(hoursWorkUsual, 1, raw = TRUE)
+  )^2
+
+model8 <- lm(model8_formula, data = training)
+
+predictions   <- predict(model8, newdata = testing[!bad, ])
+
+score8a  <- RMSE(predictions, testing$ln_ingtot_h)
+
+score8a
 
 
+# modelo 9 (alucinación 6/5)
+
+model9_formula <- ln_ingtot_h ~ 
+  (
+    bin_male + formal + sizeFirm +
+      maxEducLevel + estrato1 + oficio +
+      poly(age, 3, raw = TRUE) +
+      poly(experience, 3, raw = TRUE) +
+      poly(hoursWorkUsual, 3, raw = TRUE)
+  )^2
+
+model9 <- lm(model9_formula, data = training)
+
+predictions   <- predict(model9, newdata = testing[!bad, ])
+
+score9a  <- RMSE(predictions, testing$ln_ingtot_h)
+
+score9a
+
+###########################
+
+p_load(modelsummary)
+
+models <- list(
+  "Modelo 1" = model1,
+  "Modelo 2" = model2,
+  "Modelo 3" = model3,
+  "Modelo 4" = model4,
+  "Modelo 5" = model5,
+  "Modelo 6" = model6,
+  "Modelo 7" = model7,
+  "Modelo 8" = model8,
+  "Modelo 9" = model9
+)
+
+# --- Parámetro personalizado por modelo ---
+param_personal <- c(
+  "Modelo 1" = score1a,
+  "Modelo 2" = score2a,
+  "Modelo 3" = score3a,
+  "Modelo 4" = score4a,
+  "Modelo 5" = score5a,
+  "Modelo 6" = score6a,
+  "Modelo 7" = score7a,
+  "Modelo 8" = score8a,
+  "Modelo 9" = score9a
+)
+
+# Funciones auxiliares
+rmse_in_sample <- function(model) sqrt(mean(residuals(model)^2, na.rm = TRUE))
+k_params       <- function(model) length(coef(model))
+
+# === 1) Calcular métricas ===
+metrics_list <- lapply(models, function(mod) {
+  sm <- summary(mod)
+  c(
+    "RMSE (in-sample)" = rmse_in_sample(mod),
+    "R²"               = unname(sm$r.squared),
+    "R² ajustado"      = unname(sm$adj.r.squared),
+    "Observaciones"    = stats::nobs(mod),
+    "N° parámetros"    = k_params(mod),
+    "RMSE (out of sample)" = NA  # Placeholder, lo agregaremos luego
+  )
+})
+
+# === 2) Convertir a matriz ===
+metrics_mat <- do.call(rbind, metrics_list)  # <-- cambiamos a rbind en vez de cbind
+rownames(metrics_mat) <- names(models)
+
+# === 3) Insertar columna de parámetro personalizado ===
+metrics_mat[, "RMSE (out of sample)"] <- param_personal[rownames(metrics_mat)]
+
+# === 4) Pasar a data.frame ===
+tabla_df <- data.frame(
+  Modelo = rownames(metrics_mat),
+  metrics_mat,
+  row.names = NULL,
+  check.names = FALSE
+)
+
+# === 5) Exportar tabla en LaTeX ===
+latex_out <- datasummary_df(tabla_df, fmt = 3, output = "latex")
+latex_out
+
+#################################
+
+
+# 2)
+model_best <- lm(model6_formula, data = training, na.action = na.exclude)
+
+pred <- predict(model_best, newdata = testing, se.fit = TRUE, na.action = na.pass)
+y    <- testing$ln_ingtot_h
+
+ok   <- !is.na(pred$fit) & !is.na(y)
+yhat <- pred$fit[ok]
+e    <- y[ok] - yhat
+
+# sigma^2 (del entrenamiento) y leverage predictivo h0
+sigma2 <- sum(residuals(model_best)^2) / df.residual(model_best)
+h0     <- (pred$se.fit[ok]^2) / sigma2                      # se.fit es del "mean"; h0 = se.fit^2 / sigma^2
+se_pred <- sqrt(sigma2 * (1 + h0))                          # error estándar predictivo
+z       <- e / se_pred
+
+# Intervalos de predicción 95% y flag de fuera de PI
+lw <- yhat - 1.96 * se_pred
+up <- yhat + 1.96 * se_pred
+outside_PI <- (y[ok] < lw) | (y[ok] > up)
+
+# 3) Tabla de triage (ordena por |z|)
+triage <- testing[ok, , drop = FALSE] |>
+  mutate(
+    .row      = which(ok)[seq_len(sum(ok))],
+    y         = y[ok],
+    yhat      = yhat,
+    e         = e,
+    abs_e     = abs(e),
+    z         = z,
+    h0        = h0,
+    PI_low    = lw,
+    PI_up     = up,
+    outside_PI = outside_PI
+  ) |>
+  arrange(desc(abs(z)))
+
+# (Opcional) tasa observada vs esperada
+rate_out <- mean(triage$outside_PI, na.rm = TRUE)
+message(sprintf("Cobertura 95%%: fuera de PI observados = %.2f%% (esperado ~5%%).", 100 * rate_out))
+
+# ================== 4) GRÁFICAS ==================
+
+theme_set(theme_minimal(base_size = 12))
+
+# A) Histograma + densidad de errores con colas destacadas
+p_hist <- ggplot(triage, aes(x = e)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 40, alpha = 0.7) +
+  geom_density(linewidth = 0.8) +
+  labs(title = "Distribución de errores de predicción (test)",
+       x = "e = y - ŷ", y = "Densidad", fill = "Fuera PI 95%") +
+  guides(fill = guide_legend(override.aes = list(color = NA)))
+
+# B) QQ-plot de z (estandarizados predictivos)
+p_qq <- ggplot(triage, aes(sample = z)) +
+  stat_qq(alpha = 0.5) +
+  stat_qq_line() +
+  labs(title = "QQ-plot de errores estandarizados (z)",
+       x = "Cuantiles teóricos", y = "Cuantiles de z")
+
+# C) Residual vs yhat (búsqueda de no linealidades/heterocedasticidad)
+p_res_v_yhat <- ggplot(triage, aes(x = yhat, y = e)) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "loess", se = TRUE) +
+  labs(title = "Residuales vs ŷ",
+       x = "ŷ", y = "e")
+
+# D) |z| vs h0 (¿errores grandes donde ya había alta varianza?)
+p_absz_h0 <- ggplot(triage, aes(x = h0, y = abs(z))) +
+  geom_point(alpha = 0.25) +
+  geom_smooth(method = "loess", se = FALSE) +
+  labs(title = "|z| vs leverage predictivo (h0)",
+       x = "h0", y = "|z|")
+
+# --- E) Box/Violin por subgrupos: OFICIO (top 12) ---
+if ("oficio" %in% names(triage)) {
+  library(forcats)
+  
+  # Asegura que 'oficio' sea factor y sin niveles vacíos
+  triage <- triage |>
+    mutate(oficio = fct_drop(as.factor(oficio)))
+  
+  # Saca top 12 por frecuencia y CONVIERTE A CHARACTER
+  top_oficios <- triage |>
+    count(oficio, sort = TRUE, name = "n") |>
+    slice_head(n = 12) |>
+    pull(oficio) |>
+    as.character()
+  
+  # Mantén solo esos niveles, el resto a "Otros"
+  triage <- triage |>
+    mutate(oficio_top = fct_other(oficio,
+                                  keep = top_oficios,
+                                  other_level = "Otros"))
+  
+  # Grafica sólo los top (excluye "Otros" para que no sature)
+  p_box_oficio <- triage |>
+    filter(oficio_top != "Otros") |>
+    ggplot(aes(x = fct_reorder(oficio_top, e, .fun = median),
+               y = e)) +
+    geom_violin(fill = "grey85", alpha = 0.7, trim = FALSE) +
+    geom_boxplot(width = 0.15, outlier.alpha = 0.2) +
+    coord_flip() +
+    labs(title = "Errores por oficio (top 12)",
+         x = "oficio", y = "e")
+}
+
+# F) Cobertura de PI por deciles de ŷ (calibración local)
+calib <- triage |>
+  mutate(decile = ntile(yhat, 10)) |>
+  group_by(decile) |>
+  summarise(
+    n = n(),
+    share_out = mean(outside_PI, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+p_calib <- ggplot(calib, aes(x = decile, y = share_out)) +
+  geom_line() +
+  geom_point() +
+  geom_hline(yintercept = 0.05, linetype = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+  labs(title = "Cobertura local: proporción fuera del PI por decil de ŷ",
+       x = "Decil de ŷ (test)", y = "% fuera del PI (observado)")
+
+#################################
+
+#LOOCV del modelo 5
+
+full_model <- lm(model5_formula,
+                 
+                 data = db_int)
+
+X<- model.matrix(full_model)
+
+y <- model.response(model.frame(full_model))
+
+beta_hat <- full_model$coefficients
+
+## Calculate the inverse of  (X'X), call it G_inv
+
+G_inv<- solve(t(X)%*%X)
+
+## and 1/1-hi
+
+vec<- 1/(1-hatvalues(full_model))
+
+N <- nrow(X)  # Number of observations
+
+LOO <- numeric(N)  # To store the errors
+
+# Loop over each observation
+
+for (i in 1:N) {
+  
+  # get the new beta
+  
+  new_beta<- beta_hat  - vec[i] * G_inv %*% as.vector(X[i, ]) * full_model$residuals[i]
+  
+  ## get the new error
+  
+  new_error<- (y[i]- (X[i, ] %*% new_beta))^2
+  
+  LOO[i]<-  new_error
+  
+}
+
+looCV_error_model5 <- mean(LOO,na.rm = TRUE)
+
+sqrt(looCV_error_model5)
+
+#LOOCV del modelo 6
+
+ctrl <- trainControl(
+  method = "LOOCV", verboseIter = TRUE) ## input the method Leave One Out Cross Validation
+
+vars <- all.vars(model6_formula)      # variables de la fórmula
+
+db_cv <- db_int |>
+  mutate(across(where(is.character), ~na_if(.x, ""))) |>  # convierte "" a NA
+  filter(!is.na(ln_ingtot_h)) |>
+  drop_na(all_of(vars)) |>
+  mutate(across(where(is.factor), droplevels))            # limpia niveles vacíos
+
+loocv_modelo6 <- train(
+  model6_formula,
+  data = db_cv,
+  method = "lm",
+  trControl = ctrl
+)
+loocv_modelo6
