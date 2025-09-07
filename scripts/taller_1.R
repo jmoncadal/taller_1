@@ -548,11 +548,14 @@ ggplot(ci_df, aes(x = age, y = p50, group = genero)) +
 
 set.seed(10101)
 
-df_w <- df%>% filter(!is.na(df$ln_ingtot_h))
+df_age <- df |> 
+  dplyr::filter(age >= 18, age <= 82)
 
-df_w <- df%>% filter(!is.infinite(df$ln_ingtot_h))
+df_w <- df_age |>
+  dplyr::filter(!is.na(ln_ingtot_h), is.finite(ln_ingtot_h))
 
-db_int = df_w%>% filter(ln_ingtot_h > 0)
+db_int <- df_w |>
+  dplyr::filter(ln_ingtot_h > 0)
 
 # vamos a partir las bases de datos
 
@@ -605,11 +608,11 @@ model3 <- lm(model3_formula,
              
              data = training)
 
-training$maxEducLevel <- droplevels(factor(training$maxEducLevel))
+training$oficio <- droplevels(factor(training$oficio))
 
-testing$maxEducLevel  <- factor(testing$maxEducLevel, levels = levels(training$maxEducLevel))
+testing$oficio  <- factor(testing$oficio, levels = levels(training$oficio))
 
-bad <- is.na(testing$maxEducLevel)    # filas con niveles no vistos
+bad <- is.na(testing$oficio)    # filas con niveles no vistos
 
 predictions <- predict(model3, newdata = testing[!bad,])
 
@@ -716,26 +719,6 @@ score8a  <- RMSE(predictions, testing$ln_ingtot_h)
 
 score8a
 
-
-# modelo 9 (alucinación 6/5)
-
-model9_formula <- ln_ingtot_h ~ 
-  (
-    bin_male + formal + sizeFirm +
-      maxEducLevel + estrato1 + oficio +
-      poly(age, 3, raw = TRUE) +
-      poly(experience, 3, raw = TRUE) +
-      poly(hoursWorkUsual, 3, raw = TRUE)
-  )^2
-
-model9 <- lm(model9_formula, data = training)
-
-predictions   <- predict(model9, newdata = testing[!bad, ])
-
-score9a  <- RMSE(predictions, testing$ln_ingtot_h)
-
-score9a
-
 ###########################
 
 p_load(modelsummary)
@@ -748,8 +731,7 @@ models <- list(
   "Modelo 5" = model5,
   "Modelo 6" = model6,
   "Modelo 7" = model7,
-  "Modelo 8" = model8,
-  "Modelo 9" = model9
+  "Modelo 8" = model8
 )
 
 # --- Parámetro personalizado por modelo ---
@@ -761,8 +743,7 @@ param_personal <- c(
   "Modelo 5" = score5a,
   "Modelo 6" = score6a,
   "Modelo 7" = score7a,
-  "Modelo 8" = score8a,
-  "Modelo 9" = score9a
+  "Modelo 8" = score8a
 )
 
 # Funciones auxiliares
@@ -803,12 +784,17 @@ latex_out
 
 #################################
 
+fac_cols <- names(Filter(is.factor, training))
+for (cl in fac_cols) {
+  testing[[cl]] <- factor(testing[[cl]], levels = levels(training[[cl]]))
+}
 
-# 2)
-model_best <- lm(model6_formula, data = training, na.action = na.exclude)
+# 2) Entrenar en TRAIN (recomendado) y predecir en TEST
+model_best <- lm(model6_formula, data = training)
 
-pred <- predict(model_best, newdata = testing, se.fit = TRUE, na.action = na.pass)
+pred <- predict(model_best, newdata = testing[!bad, ], se.fit = TRUE, na.action = na.pass)
 y    <- testing$ln_ingtot_h
+
 
 ok   <- !is.na(pred$fit) & !is.na(y)
 yhat <- pred$fit[ok]
@@ -856,13 +842,6 @@ p_hist <- ggplot(triage, aes(x = e)) +
   labs(title = "Distribución de errores de predicción (test)",
        x = "e = y - ŷ", y = "Densidad", fill = "Fuera PI 95%") +
   guides(fill = guide_legend(override.aes = list(color = NA)))
-
-# B) QQ-plot de z (estandarizados predictivos)
-p_qq <- ggplot(triage, aes(sample = z)) +
-  stat_qq(alpha = 0.5) +
-  stat_qq_line() +
-  labs(title = "QQ-plot de errores estandarizados (z)",
-       x = "Cuantiles teóricos", y = "Cuantiles de z")
 
 # C) Residual vs yhat (búsqueda de no linealidades/heterocedasticidad)
 p_res_v_yhat <- ggplot(triage, aes(x = yhat, y = e)) +
@@ -929,6 +908,20 @@ p_calib <- ggplot(calib, aes(x = decile, y = share_out)) +
   scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
   labs(title = "Cobertura local: proporción fuera del PI por decil de ŷ",
        x = "Decil de ŷ (test)", y = "% fuera del PI (observado)")
+
+# Top candidatos (según |z|); ajusta N según tu flujo
+topN <- 30
+triage_top <- triage |>
+  mutate(flag_tail = (abs(z) > 3) | outside_PI) |>
+  arrange(desc(abs(z))) |>
+  slice_head(n = topN) |>
+  select(.row, y, yhat, e, z, h0, PI_low, PI_up, outside_PI, flag_tail,
+         bin_male, formal, sizeFirm, estrato1, oficio, maxEducLevel)
+
+# Imprime vistas rápidas
+print(head(triage_top, 10))
+print(calib)
+
 
 #################################
 
