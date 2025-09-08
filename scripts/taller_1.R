@@ -378,8 +378,6 @@ ggsave(
 
 # Punto 5 ----------------
 
-df$bin_female <- ifelse(df$bin_female == 1, 0, 1)
-df <- rename(df, 'bin_male'='bin_female')
 
 set.seed(10101)
 
@@ -397,15 +395,12 @@ db_int <- df_w |>
 inTrain <- createDataPartition(
   
   y = db_int$ln_ingtot_h,  ## the outcome data are needed
-  
   p = .70, ## The percentage of training data
-  
   list = FALSE
   
 )
 
 training <- db_int |> filter(row_number() %in% inTrain)
-
 testing  <- db_int |> filter(!(row_number() %in% inTrain))
 
 # modelo 1
@@ -416,23 +411,17 @@ model1 <- lm(model1_formula,
              data = training)
 
 predictions <- predict(object = model1, newdata = testing)
-
 score1a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
-
 score1a
 
-# modelo 2 (hasta acá está bien)
+# modelo 2
 
 model2_formula <- ln_ingtot_h ~ bin_male
-
 model2 <- lm(model2_formula,
-             
              data = training)
 
 predictions <- predict(object = model2, newdata = testing)
-
 score2a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
-
 score2a
 
 # model 3
@@ -440,36 +429,29 @@ score2a
 model3_formula <- ln_ingtot_h ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + estrato1  + cuentaPropia + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm
 
 model3 <- lm(model3_formula,
-             
              data = training)
 
+#Nivelar factores tanto en training como en testing
 training$oficio <- droplevels(factor(training$oficio))
-
 testing$oficio  <- factor(testing$oficio, levels = levels(training$oficio))
-
 bad <- is.na(testing$oficio)    # filas con niveles no vistos
 
 predictions <- predict(model3, newdata = testing[!bad,])
-
 score3a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
-
 score3a
 
-# modelo 4 (alucinación 1/5)
+# modelo 4 (especificación adicional 1/5)
 
 model4_formula <- ln_ingtot_h ~ age + age_sq + bin_male + bin_male:age + bin_male:age_sq + estrato1  + cuentaPropia + maxEducLevel + poly(experience,degree = 2, raw = TRUE) + sizeFirm + oficio
 
 model4 <- lm(model4_formula,
-             
              data = training)
 
 predictions <- predict(model4, newdata = testing[!bad, ])
-
 score4a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
-
 score4a
 
-# modelo 5 (alucinación 2/5)
+# modelo 5 (especificación adicional 2/5)
 
 model5_formula <- ln_ingtot_h ~ 
   bin_male +
@@ -490,7 +472,7 @@ score5a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
 
 score5a
 
-# modelo 6 (alucinación 3/5)
+# modelo 6 (especificación adicional 3/5)
 
 model6_formula <- ln_ingtot_h ~
   bin_male +
@@ -504,16 +486,13 @@ model6_formula <- ln_ingtot_h ~
   bin_male:maxEducLevel +  estrato1:maxEducLevel
 
 model6 <- lm(model6_formula,
-             
              data = training)
 
 predictions <- predict(object = model6, newdata = testing[!bad, ])
-
 score6a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
-
 score6a
 
-# modelo 7 (alucinación 4/5)
+# modelo 7 (especificación adicional 4/5)
 
 model7_formula <- ln_ingtot_h ~ 
   bin_male +
@@ -534,7 +513,7 @@ score7a  <- RMSE(predictions, testing$ln_ingtot_h)
 
 score7a
 
-# modelo 8 (alucinación 5/5)
+# modelo 8 (especificación adicional 5/5)
 
 model8_formula <- ln_ingtot_h ~
   
@@ -547,14 +526,12 @@ model8_formula <- ln_ingtot_h ~
   )^2
 
 model8 <- lm(model8_formula, data = training)
-
 predictions   <- predict(model8, newdata = testing[!bad, ])
-
 score8a  <- RMSE(predictions, testing$ln_ingtot_h)
-
 score8a
 
 ###########################
+#TABLA MODELOS
 
 p_load(modelsummary)
 
@@ -617,205 +594,162 @@ tabla_df <- data.frame(
 latex_out <- datasummary_df(tabla_df, fmt = 3, output = "latex")
 latex_out
 
+# Generar la salida LaTeX como texto plano
+latex_out <- datasummary_df(tabla_df, fmt = 3, output = "latex") |> as.character()
+ruta_salida <- "views/tabla_modelos.tex"
+
+# Guardar el archivo .tex
+writeLines(latex_out, ruta_salida)
+
+cat("Archivo LaTeX guardado en:", ruta_salida)
+
 #################################
+# EJERICIO OUTLIERS
 
-fac_cols <- names(Filter(is.factor, training))
-for (cl in fac_cols) {
-  testing[[cl]] <- factor(testing[[cl]], levels = levels(training[[cl]]))
-}
+model6_formula <- ln_ingtot_h ~
+  bin_male +
+  poly(age, 2, raw = TRUE) + poly(age, 2, raw = TRUE):bin_male +
+  poly(experience, 4, raw = TRUE) + poly(experience, 3, raw = TRUE):bin_male + poly(experience, 3, raw = TRUE):formal +
+  poly(hoursWorkUsual, 4, raw = TRUE) + poly(hoursWorkUsual, 7, raw = TRUE):bin_male +
+  maxEducLevel + maxEducLevel:formal +
+  formal + bin_male:formal +
+  sizeFirm + bin_male:sizeFirm +
+  estrato1 + oficio + 
+  bin_male:maxEducLevel +  estrato1:maxEducLevel
 
-# 2) Entrenar en TRAIN (recomendado) y predecir en TEST
-model_best <- lm(model6_formula, data = training)
+model6 <- lm(model6_formula,
+             data = training)
 
-pred <- predict(model_best, newdata = testing[!bad, ], se.fit = TRUE, na.action = na.pass)
-y    <- testing$ln_ingtot_h
+predictions <- predict(object = model6, newdata = testing[!bad, ])
+score6a<- RMSE(pred = predictions, obs = testing$ln_ingtot_h )
+score6a
 
 
-ok   <- !is.na(pred$fit) & !is.na(y)
-yhat <- pred$fit[ok]
-e    <- y[ok] - yhat
+# Asegura alineación 1 a 1
+obs_ok <- testing$ln_ingtot_h[!bad]
 
-# sigma^2 (del entrenamiento) y leverage predictivo h0
-sigma2 <- sum(residuals(model_best)^2) / df.residual(model_best)
-h0     <- (pred$se.fit[ok]^2) / sigma2                      # se.fit es del "mean"; h0 = se.fit^2 / sigma^2
-se_pred <- sqrt(sigma2 * (1 + h0))                          # error estándar predictivo
-z       <- e / se_pred
+# Error de predicción
+err <- predictions - obs_ok
 
-# Intervalos de predicción 95% y flag de fuera de PI
-lw <- yhat - 1.96 * se_pred
-up <- yhat + 1.96 * se_pred
-outside_PI <- (y[ok] < lw) | (y[ok] > up)
+# Data frame y violín
+df_err <- tibble(error = err)
 
-# 3) Tabla de triage (ordena por |z|)
-triage <- testing[ok, , drop = FALSE] |>
+ggplot(df_err, aes(x = "", y = error)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.12, outlier.alpha = 0) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(
+    x = NULL, y = "Error de predicción"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+
+library(dplyr)
+library(ggplot2)
+library(caret)
+
+err <- predictions - obs_ok
+
+# Marco para graficar
+df_err <- tibble(
+  x     = "Errores",        # categoría única para el eje X
+  error = err,
+  id    = which(!bad)[seq_along(predictions)]  # índice en testing
+)
+
+# Umbrales para “colas”
+qs <- quantile(df_err$error, c(.025, .50, .975), na.rm = TRUE)
+df_err <- df_err %>%
   mutate(
-    .row      = which(ok)[seq_len(sum(ok))],
-    y         = y[ok],
-    yhat      = yhat,
-    e         = e,
-    abs_e     = abs(e),
-    z         = z,
-    h0        = h0,
-    PI_low    = lw,
-    PI_up     = up,
-    outside_PI = outside_PI
-  ) |>
-  arrange(desc(abs(z)))
-
-# (Opcional) tasa observada vs esperada
-rate_out <- mean(triage$outside_PI, na.rm = TRUE)
-message(sprintf("Cobertura 95%%: fuera de PI observados = %.2f%% (esperado ~5%%).", 100 * rate_out))
-
-# ================== 4) GRÁFICAS ==================
-
-theme_set(theme_minimal(base_size = 12))
-
-# A) Histograma + densidad de errores con colas destacadas
-p_hist <- ggplot(triage, aes(x = e)) +
-  geom_histogram(aes(y = after_stat(density)), bins = 40, alpha = 0.7) +
-  geom_density(linewidth = 0.8) +
-  labs(title = "Distribución de errores de predicción (test)",
-       x = "e = y - ŷ", y = "Densidad", fill = "Fuera PI 95%") +
-  guides(fill = guide_legend(override.aes = list(color = NA)))
-
-# C) Residual vs yhat (búsqueda de no linealidades/heterocedasticidad)
-p_res_v_yhat <- ggplot(triage, aes(x = yhat, y = e)) +
-  geom_point(alpha = 0.25) +
-  geom_smooth(method = "loess", se = TRUE) +
-  labs(title = "Residuales vs ŷ",
-       x = "ŷ", y = "e")
-
-# D) |z| vs h0 (¿errores grandes donde ya había alta varianza?)
-p_absz_h0 <- ggplot(triage, aes(x = h0, y = abs(z))) +
-  geom_point(alpha = 0.25) +
-  geom_smooth(method = "loess", se = FALSE) +
-  labs(title = "|z| vs leverage predictivo (h0)",
-       x = "h0", y = "|z|")
-
-# --- E) Box/Violin por subgrupos: OFICIO (top 12) ---
-if ("oficio" %in% names(triage)) {
-  library(forcats)
-  
-  # Asegura que 'oficio' sea factor y sin niveles vacíos
-  triage <- triage |>
-    mutate(oficio = fct_drop(as.factor(oficio)))
-  
-  # Saca top 12 por frecuencia y CONVIERTE A CHARACTER
-  top_oficios <- triage |>
-    count(oficio, sort = TRUE, name = "n") |>
-    slice_head(n = 12) |>
-    pull(oficio) |>
-    as.character()
-  
-  # Mantén solo esos niveles, el resto a "Otros"
-  triage <- triage |>
-    mutate(oficio_top = fct_other(oficio,
-                                  keep = top_oficios,
-                                  other_level = "Otros"))
-  
-  # Grafica sólo los top (excluye "Otros" para que no sature)
-  p_box_oficio <- triage |>
-    filter(oficio_top != "Otros") |>
-    ggplot(aes(x = fct_reorder(oficio_top, e, .fun = median),
-               y = e)) +
-    geom_violin(fill = "grey85", alpha = 0.7, trim = FALSE) +
-    geom_boxplot(width = 0.15, outlier.alpha = 0.2) +
-    coord_flip() +
-    labs(title = "Errores por oficio (top 12)",
-         x = "oficio", y = "e")
-}
-
-# F) Cobertura de PI por deciles de ŷ (calibración local)
-calib <- triage |>
-  mutate(decile = ntile(yhat, 10)) |>
-  group_by(decile) |>
-  summarise(
-    n = n(),
-    share_out = mean(outside_PI, na.rm = TRUE),
-    .groups = "drop"
+    zona = case_when(
+      error <= qs[1] ~ "Cola inferior (2.5%)",
+      error >= qs[3] ~ "Cola superior (2.5%)",
+      TRUE           ~ "Centro"
+    ),
+    zona = factor(zona, levels = c("Cola inferior (2.5%)","Centro","Cola superior (2.5%)"))
   )
 
-p_calib <- ggplot(calib, aes(x = decile, y = share_out)) +
-  geom_line() +
-  geom_point() +
-  geom_hline(yintercept = 0.05, linetype = 2) +
-  scale_x_continuous(breaks = 1:10) +
-  scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
-  labs(title = "Cobertura local: proporción fuera del PI por decil de ŷ",
-       x = "Decil de ŷ (test)", y = "% fuera del PI (observado)")
+df_pts <- df_err %>% slice_sample(n = 5000)  
 
-# Top candidatos (según |z|); ajusta N según tu flujo
-topN <- 30
-triage_top <- triage |>
-  mutate(flag_tail = (abs(z) > 3) | outside_PI) |>
-  arrange(desc(abs(z))) |>
-  slice_head(n = topN) |>
-  select(.row, y, yhat, e, z, h0, PI_low, PI_up, outside_PI, flag_tail,
-         bin_male, formal, sizeFirm, estrato1, oficio, maxEducLevel)
+distr <- ggplot(df_err, aes(x = x, y = error)) +
+  # violín
+  geom_violin(trim = FALSE, width = 0.9, alpha = 0.15) +
+  # caja 
+  geom_boxplot(width = 0.12, outlier.alpha = 0) +
+  # puntos: colorea por zona (colas/centro)
+  geom_jitter(
+    data  = df_pts,
+    aes(color = zona),
+    width = 0.08, height = 0, size = 1, alpha = 0.35
+  ) +
+  # línea en 0 (sesgo)
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  # mediana como rombo
+  stat_summary(fun = median, geom = "point", shape = 23, size = 2.5, fill = "white") +
+  # marcas de los percentiles de cola
+  geom_segment(aes(x = 0.72, xend = 1.28, y = qs[1], yend = qs[1]), linewidth = 0.3) +
+  geom_segment(aes(x = 0.72, xend = 1.28, y = qs[3], yend = qs[3]), linewidth = 0.3) +
+  labs(
+    subtitle = sprintf("Mediana = %.3f | P2.5 = %.3f | P97.5 = %.3f", qs[2], qs[1], qs[3]),
+    x = NULL, y = "Error de predicción (ŷ − y)", color = "Zona"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_blank())
+distr
 
-# Imprime vistas rápidas
-print(head(triage_top, 10))
-print(calib)
+ggsave("distr_errors.pdf", plot = distr, width = 10, height = 6, dpi = 300)
 
-
-#################################
-
+#########################
 #LOOCV del modelo 5
 
 full_model <- lm(model5_formula,
-                 
                  data = db_int)
 
 X<- model.matrix(full_model)
-
 y <- model.response(model.frame(full_model))
-
 beta_hat <- full_model$coefficients
 
-## Calculate the inverse of  (X'X), call it G_inv
+# (X'X)^-1
 
 G_inv<- solve(t(X)%*%X)
 
-## and 1/1-hi
+# 1/1-hi
 
 vec<- 1/(1-hatvalues(full_model))
-
 N <- nrow(X)  # Number of observations
-
 LOO <- numeric(N)  # To store the errors
 
 # Loop over each observation
 
 for (i in 1:N) {
   
-  # get the new beta
+  # new beta
   
   new_beta<- beta_hat  - vec[i] * G_inv %*% as.vector(X[i, ]) * full_model$residuals[i]
   
-  ## get the new error
+  # new error
   
   new_error<- (y[i]- (X[i, ] %*% new_beta))^2
-  
   LOO[i]<-  new_error
   
 }
 
 looCV_error_model5 <- mean(LOO,na.rm = TRUE)
-
 sqrt(looCV_error_model5)
 
-#LOOCV del modelo 6
+## LOOCV del modelo 6
 
 ctrl <- trainControl(
   method = "LOOCV", verboseIter = TRUE) ## input the method Leave One Out Cross Validation
 
 vars <- all.vars(model6_formula)      # variables de la fórmula
 
+# Nivela todas las observaciones (en este caso solo es una observación)
 db_cv <- db_int |>
-  mutate(across(where(is.character), ~na_if(.x, ""))) |>  # convierte "" a NA
+  mutate(across(where(is.character), ~na_if(.x, ""))) |>  
   filter(!is.na(ln_ingtot_h)) |>
   drop_na(all_of(vars)) |>
-  mutate(across(where(is.factor), droplevels))            # limpia niveles vacíos
+  mutate(across(where(is.factor), droplevels))          
 
 loocv_modelo6 <- train(
   model6_formula,
@@ -824,3 +758,77 @@ loocv_modelo6 <- train(
   trControl = ctrl
 )
 loocv_modelo6
+
+############################
+# Tabla
+
+# LOOCV
+loocv <- c(
+  "Modelo 5" = sqrt(looCV_error_model5), 
+  "Modelo 6" = loocv_modelo6$results$RMSE
+)
+
+# Scores de validación 30/70
+rmse_7030 <- c(
+  "Modelo 5" = score5a,   
+  "Modelo 6" = score6a    
+)
+
+# ---- 2) Construye la tabla a partir de vectores nombrados ----
+metrics <- list(
+  `LOOCV (RMSE)` = loocv,
+  `RMSE (30/70)` = rmse_7030)
+
+build_table <- function(metrics_list) {
+  models <- unique(unlist(lapply(metrics_list, names)))
+  df <- data.frame(Modelo = models, check.names = FALSE)
+  for (nm in names(metrics_list)) {
+    v <- metrics_list[[nm]]
+    df[[nm]] <- as.numeric(v[df$Modelo])
+  }
+  rownames(df) <- NULL
+  df
+}
+
+tab <- build_table(metrics)
+
+# Redondeo
+num_cols <- which(sapply(tab, is.numeric))
+tab[num_cols] <- lapply(tab[num_cols], function(x) round(x, 3))
+
+
+# ---- 3) Exporta a LaTeX con kableExtra ----
+p_load(knitr)
+p_load(kableExtra)
+
+cols_7030 <- grep("30/70", names(tab))
+header_vec <- c(" " = 1)
+if (length(cols_7030) > 0) header_vec <- c(header_vec, "Validación 30/70" = length(cols_7030))
+if (sum(!(seq_along(tab) %in% c(1, cols_7030))) > 0) {
+  header_vec <- c(" " = 1, "LOOCV" = 1, "Validación 30/70" = length(cols_7030))
+}
+
+k <- kable(
+  tab,
+  format = "latex",
+  booktabs = TRUE,
+  align = c("l", rep("c", ncol(tab)-1)),
+  caption = "Comparativo de desempeño: LOOCV vs validación 30/70"
+) |>
+  kable_styling(
+    latex_options = c("hold_position", "striped"),
+    full_width = FALSE
+  ) |>
+  column_spec(1, bold = TRUE)
+
+# Aplica encabezado agrupado si corresponde
+if (length(header_vec) > 1) {
+  k <- k |> add_header_above(header_vec)
+}
+
+# Guardar en un .tex listo para \input{} en tu documento
+outfile <- "views/tabla_desempeno_modelos.tex"
+cat(k, file = outfile)
+
+message("Tabla exportada a: ", outfile)
+
