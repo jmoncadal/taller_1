@@ -9,7 +9,6 @@ options("scipen"=100, "digits"=4)
 library(pacman)
 p_load(tidyverse, rvest, writexl, readxl,
        gt, gtsummary, caret, boot, stargazer)
-# source(paste0(wd_main, wd_code, "/aux_functions.R")) Descomentar esto luego
 
 # Estableciendo rutas -----------------------------------------------------
 
@@ -22,7 +21,6 @@ wd_views <- "views"
 # Definiciones necesarias -------------------------------------------------
 
 geih <- data.frame()
-source(paste0(wd_code, "/aux_functions_v2.R"))
 
 # Ejercicio 1. Scrapeo de datos -------------------------------------------
 # Scrapeando datos de la página
