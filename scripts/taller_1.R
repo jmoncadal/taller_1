@@ -197,7 +197,6 @@ df <- rename(df, 'bin_female'='bin_male')
 df <- rename(df,'cuentaPropia' = 'bin_selfemp')
 #Ejercicio 4.a
 model3_4 <- lm(ln_ingtot_h ~ bin_female, data = df)
-out_tex <- file.path(wd_views, "model3_4.tex")
 stargazer(model3_4, type = 'text')
 
 #Ejercicio 4.b 
@@ -220,6 +219,9 @@ d_tilde <- resid(lm(update(controles, bin_female ~ .), data = df_clean))
 
 model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
 stargazer(model4_fwl, type = 'text')
+
+stargazer(model3_4, model4_fwl, type = 'latex')
+out_tex <- file.path(wd_views, "modelos_p4.tex")
 
 fwl_boot <- function(data, indices) {
   df_sample <- data[indices, ]
