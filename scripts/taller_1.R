@@ -252,6 +252,7 @@ comparison <- data.frame(
 print(comparison)
 
 # Gráfica 4c
+library(car)
 model <- lm(
   ln_ingtot_h ~ age + age_sq + bin_female +
     bin_female:age + bin_female:age_sq +
