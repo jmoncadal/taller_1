@@ -43,6 +43,7 @@ for (i in seq(1, length(pages))){
   
   geih <- rbind(geih, base[[1]])
   print(paste0("Base ", i ," cargada."))
+  Sys.sleep(1)
 }
 
 geih[1] <- NULL
