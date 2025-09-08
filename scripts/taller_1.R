@@ -45,10 +45,10 @@ for (i in seq(1, length(pages))){
   
   geih <- rbind(geih, base[[1]])
   print(paste0("Base ", i ," cargada."))
+  
 }
 
 geih[1] <- NULL
-
 write_xlsx(geih, paste0(wd_main, wd_output, "/base_geih.xlsx"))
 
 geih <- read_xlsx(paste0(wd_main, wd_output, "/base_geih.xlsx"))
@@ -91,28 +91,45 @@ geih_miss <- skim(geih_clean) %>%
 
 # Concentración del salario por grupo sexo
 
-ggplot(geih_clean, aes(as.factor(bin_male), ln_ingtot_h)) +
-  geom_boxplot(alpha = 0.7, width = 0.6, color = "black", outlier.colour = "blue", outlier.alpha = 0.6) +
-  labs(x = "Sexo", y = "Ingreso total por hora (log)") +
-  scale_x_discrete(labels = c("0" = "Mujer", "1" = "Hombre")) +
-  theme_minimal()
-
-ggsave(paste0(wd_main, wd_views, "/salario_sexo.png"))
+# Boxplot: educación en el eje X, sexo como fill
+ggplot(geih_clean, aes(x = maxEducLevel, y = ln_ingtot_h, fill = sexo)) +
+  geom_boxplot(alpha = 0.7, outlier.colour = "blue", outlier.alpha = 0.5) +
+  labs(
+    title = "Salario por grupo educativo y sexo",
+    x = "Nivel educativo",
+    y = "Ingreso total por hora (log)",
+    fill = "Sexo"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1)) +
+  scale_x_discrete(labels = c("1" = "Ninguno", "2" = "Pre-escolar",
+                              "3" = "Primaria incomp.", "4" = "Primaria comp.",
+                              "5" = "Secundaria incomp.", "6" = "Secundaria comp.",
+                              "7"  = "Terciaria"))
+ggsave(paste0(wd_main, wd_views, "/salario_sexo_educacion.png"))
 
 # Concentración del salario por grupo etario
 
 geih_clean <- geih_clean %>%
   filter(age <= 82) %>% 
-  mutate(age_group = cut(age, breaks = seq(15, 80, by = 5), right = FALSE)) %>% 
+  mutate(age_group = cut(age, breaks = seq(15, 80, by = 10), right = FALSE)) %>% 
   drop_na(age, ln_ingtot_h)
 
-ggplot(geih_clean, aes(age_group, ln_ingtot_h)) +
-  geom_boxplot(alpha = 0.7, width = 0.6, color = "black",
+ggplot(geih_clean, aes(x = age_group, y = ln_ingtot_h, fill = sexo)) +
+  geom_boxplot(alpha = 0.7, width = 0.6, 
                outlier.colour = "blue", outlier.alpha = 0.6) +
-  labs(x = "Grupo de edad (años)", y = "Ingreso total por hora (log)") +
-  theme_minimal()
+  labs(
+    title = "Salario por grupo etario y sexo",
+    x = "Grupo de edad (años)",
+    y = "Ingreso total por hora (log)",
+    fill = "Sexo"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 30, hjust = 1))
 
-# Concentración del salario por grupo educativo
+ggsave(paste0(wd_main, wd_views, "/salario_sexo_edad.png"))
+
+# Concentración del salario por grupo educativohttp://127.0.0.1:14443/graphics/08c94e14-a75c-4899-b10e-a632f324f7b5.png
 
 ggplot(geih_clean, aes(maxEducLevel, ln_ingtot_h)) +
   geom_boxplot(alpha = 0.7, width = 0.6, color = "black",
@@ -134,7 +151,7 @@ ggplot(geih_clean, aes(as.factor(bin_selfemp), ln_ingtot_h)) +
   scale_x_discrete(labels = c("0" = "No Cuenta Propia", "1" = "Cuenta Propia")) +
   theme_minimal()
 
-ggsave(paste0(wd_main, wd_views, "/salario_cuenta_propa.png"))
+ggsave(paste0(wd_main, wd_views, "/salario_cuenta_propia.png"))
 
 
 # Ejercicio 3. Age-wage profile -------------------------------------------
