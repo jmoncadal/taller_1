@@ -221,6 +221,9 @@ d_tilde <- resid(lm(update(controles, bin_female ~ .), data = df_clean))
 model4_fwl <- lm(y_tilde ~ 0 + d_tilde)
 stargazer(model4_fwl, type = 'text')
 
+stargazer(model3_4, model4_fwl, type = 'text')
+out_tex <- file.path(wd_views, "modelos_punto4.tex")
+
 fwl_boot <- function(data, indices) {
   df_sample <- data[indices, ]
   
