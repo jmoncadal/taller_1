@@ -251,17 +251,7 @@ comparison <- data.frame(
 
 print(comparison)
 
-# Intento 4c ----------------------------
-
-vars_needed <- c("ln_ingtot_h", "bin_female", "age", "age_sq", "estrato1", "cuentaPropia",
-                "sizeFirm", "maxEducLevel", "experience", "experience_sq")
-
-lm(ln_ingtot_h ~age + age_sq + bin_female + bin_female:age + bin_female:age_sq + estrato1  + cuentaPropia + maxEducLevel
-   + poly(experience,degree = 2, raw = TRUE) + sizeFirm, data = df)
-
-# =============================
-# FINAL PIPELINE — Interacted model, tests, peaks, bootstrap ribbons
-# =============================
+# Gráfica 4c
 model <- lm(
   ln_ingtot_h ~ age + age_sq + bin_female +
     bin_female:age + bin_female:age_sq +
@@ -270,7 +260,7 @@ model <- lm(
   data = df, na.action = na.omit
 )
 
-# --- 2) Peak ages via delta method (names match your coef list) ---
+# Peak ages via delta method (names match your coef list) ---
 # Male:   -age / (2*age_sq)
 # Female: -(age + age:bin_female) / (2*(age_sq + age_sq:bin_female))
 dm_male <- deltaMethod(model, "- age / (2*age_sq)")
@@ -288,7 +278,7 @@ peaks_tbl <- tibble(
 
 print(peaks_tbl)
 
-# --- 3) Ceteris paribus prediction grid: only age varies ---
+# Ceteris paribus prediction grid: only age varies ---
 age_grid <- 18:82
 xl <- model$xlevels  # factor levels used by lm
 
@@ -311,7 +301,7 @@ newdat_base <- expand.grid(
   ) |>
   as.data.frame()
 
-# --- 4) Bootstrap ribbons (refit on raw rows used in model) ---
+# Bootstrap ribbons (refit on raw rows used in model) ---
 used_rows <- if (!is.null(model$na.action)) {
   setdiff(seq_len(nrow(df)), as.integer(model$na.action))
 } else seq_len(nrow(df))
@@ -339,7 +329,7 @@ pred_summary <- newdat_base |>
     sex_lbl   = if_else(bin_female == 1, "Female", "Male")
   )
 
-# --- 5) Prep peak overlays ---
+# Prep peak overlays ---
 peak_bands <- peaks_tbl |>
   transmute(sex_lbl = sex, x0 = lwr, x1 = upr)
 
