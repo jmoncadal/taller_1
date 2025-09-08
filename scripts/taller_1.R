@@ -381,6 +381,10 @@ ggsave(
 
 set.seed(10101)
 
+library(dplyr)
+
+df$bin_male <- ifelse(df$bin_female == 1, 0, 1)
+
 df_age <- df |> 
   dplyr::filter(age >= 18, age <= 82)
 
@@ -389,7 +393,6 @@ df_w <- df_age |>
 
 db_int <- df_w |>
   dplyr::filter(ln_ingtot_h > 0)
-
 # vamos a partir las bases de datos
 
 inTrain <- createDataPartition(
