@@ -8,7 +8,7 @@ options("scipen"=100, "digits"=4)
 
 library(pacman)
 p_load(tidyverse, rvest, writexl, readxl,
-       gt, gtsummary, caret, boot, stargazer)
+       gt, gtsummary, caret, boot, stargazer, car, skimr)
 
 # Estableciendo rutas -----------------------------------------------------
 
